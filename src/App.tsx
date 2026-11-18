@@ -7,6 +7,7 @@ import { Navbar, MainTabType } from './components/Navbar';
 import { LoginModal } from './components/LoginModal';
 import { PvcPrintView } from './components/PvcPrintView';
 import { PvcBackPrintView } from './components/PvcBackPrintView';
+import { GuardianPhotoPrintView } from './components/GuardianPhotoPrintView';
 import { PrintPreviewTab } from './components/PrintPreviewTab';
 import { GuardiansView } from './components/GuardiansView';
 import { StudentsView } from './components/StudentsView';
@@ -82,7 +83,7 @@ export default function App() {
   const isPrintPreviewMode = (() => {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('printPreview');
-    return mode === 'front' || mode === 'back';
+    return mode === 'front' || mode === 'back' || mode === 'photo';
   })();
 
   if (isPrintPreviewMode) {
@@ -240,6 +241,10 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
                 currentUser={currentUser}
                 onNotify={showToast}
               />
+            )}
+
+            {activeTab === 'photoPrint' && (
+              <GuardianPhotoPrintView onNotify={showToast} />
             )}
 
             {activeTab === 'cards' && (

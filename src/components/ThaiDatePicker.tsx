@@ -13,7 +13,7 @@ interface ThaiDatePickerProps {
   value: string; // YYYY-MM-DD
   onChange: (value: string) => void;
   label?: string;
-  quickPreset3YearsEntryYear?: number; // If provided, shows quick button "+3 ปีการศึกษา (31 มี.ค.)"
+  quickPreset3YearsEntryYear?: number; // If provided, shows quick button "+3 ปีการศึกษา (30 เม.ย.)"
   disabled?: boolean;
 }
 
@@ -94,8 +94,8 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
   const setThreeYearsExpiry = () => {
     const baseYear = quickPreset3YearsEntryYear || getCurrentBuddhistYear();
     const expiryBYear = baseYear + 3;
-    // 31 March
-    const newDateStr = constructDateFromThai(31, 2, expiryBYear);
+    // 30 April (month index 3)
+    const newDateStr = constructDateFromThai(30, 3, expiryBYear);
     onChange(newDateStr);
     setIsOpen(false);
   };
@@ -239,7 +239,7 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
               onClick={setThreeYearsExpiry}
               className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-md text-[11px] font-medium border border-amber-200"
             >
-              3 ปีการศึกษา (31 มี.ค.)
+              3 ปีการศึกษา (30 เม.ย.)
             </button>
           </div>
         </div>

@@ -15,6 +15,7 @@ import {
   Layers,
   Check,
   Palette,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 export type MainTabType =
@@ -24,6 +25,7 @@ export type MainTabType =
   | 'templates'
   | 'pvcPrint'
   | 'pvcPrintBack'
+  | 'photoPrint'
   | 'history';
 
 interface NavbarProps {
@@ -113,6 +115,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           icon: FlipHorizontal2,
         },
         {
+          id: 'photoPrint',
+          label: 'พิมพ์รูปผู้ปกครอง',
+          description: 'พิมพ์รูปขนาด 30×40 มม. และจัดการพื้นที่รูป',
+          icon: ImageIcon,
+        },
+        {
           id: 'history',
           label: 'ประวัติและพิมพ์ซ้ำ',
           description: 'ดูประวัติการพิมพ์และสั่งพิมพ์ซ้ำ',
@@ -163,6 +171,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const activeTabLabelMap: Record<MainTabType, string> = {
     pvcPrint: 'พิมพ์หน้าบัตรลงถาด PVC',
     pvcPrintBack: 'พิมพ์หลังบัตรลงถาด PVC',
+    photoPrint: 'พิมพ์รูปผู้ปกครอง',
     history: 'ประวัติและพิมพ์ซ้ำ',
     cards: 'บัตรรับส่งและผู้ปกครอง',
     students: 'ข้อมูลนักเรียน',

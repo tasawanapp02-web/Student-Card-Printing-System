@@ -220,10 +220,60 @@ export interface BackCardDesignConfig {
   signatureLabel: string;
 }
 
+export type PhotoPrintLayout = 'vertical' | 'horizontal';
+export type PhotoHorizontalAlign = 'left' | 'center' | 'right';
+export type PhotoVerticalAlign = 'top' | 'center' | 'bottom';
+
+export interface PhotoMarginsMm {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export interface PhotoPrintConfigPayload {
+  layout: PhotoPrintLayout;
+  paperOrientation: 'portrait' | 'landscape';
+  gapMm: number;
+  horizontalAlign?: PhotoHorizontalAlign;
+  verticalAlign?: PhotoVerticalAlign;
+  marginsMm?: PhotoMarginsMm;
+  showCutLines: boolean;
+  stripExtension: boolean;
+  showGuardianName: boolean;
+  fitMode: 'cover' | 'contain';
+  assetIds: string[];
+}
+
+export interface ImageAssetReference {
+  type: 'guardian' | 'front_design' | 'back_design' | 'sample_photo';
+  id: string;
+  label: string;
+  detail?: string;
+}
+
+export interface FirestoreUsageBreakdownItem {
+  key: string;
+  label: string;
+  count: number;
+  bytes: number;
+}
+
+export interface FirestoreUsageSummary {
+  quotaBytes: number;
+  totalUsedBytes: number;
+  remainingBytes: number;
+  usedPercentage: number;
+  imageAssetsBytes: number;
+  otherDataBytes: number;
+  totalDocuments: number;
+  breakdown: FirestoreUsageBreakdownItem[];
+}
+
 export interface PrintPreviewPayload {
   id: string;
   createdAt: string;
-  side: 'front' | 'back';
+  side: 'front' | 'back' | 'photo';
   trayConfig: TrayCalibrationConfig;
   enableSlot1: boolean;
   enableSlot2: boolean;
@@ -236,6 +286,7 @@ export interface PrintPreviewPayload {
   backDesign?: BackCardDesignConfig;
   backSlot1Rotate180?: boolean;
   backSlot2Rotate180?: boolean;
+  photoPrintConfig?: PhotoPrintConfigPayload;
   operatorName: string;
 }
 

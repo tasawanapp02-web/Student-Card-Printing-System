@@ -13,6 +13,9 @@ import {
   OperatorAccount,
   ImageAsset,
   ImageAssetCategory,
+  ImageAssetReference,
+  FirestoreUsageSummary,
+  FirestoreUsageBreakdownItem,
 } from '../types';
 import {
   DEFAULT_TRAY_CONFIG,
@@ -1601,6 +1604,214 @@ class StorageService {
       (extractedId ? assets.find((a) => a.id === extractedId) : undefined) ||
       (raw ? assets.find((a) => a.storageUrl === raw) : undefined);
     return matched?.dataUrl || undefined;
+  }
+
+  public getImageAssetReferences(asset: ImageAsset): ImageAssetReference[] {
+    const refs: ImageAssetReference[] = [];
+    const assetRefUri = `firestore-asset://${asset.id}`;
+    const guardians = this.getGuardians();
+    const cards = this.getCards();
+
+    for (const g of guardians) {
+      const matched =
+        g.photoAssetId === asset.id ||
+        g.photoUrl === assetRefUri ||
+        Boolean(asset.storageUrl && g.photoUrl === asset.storageUrl) ||
+        Boolean(asset.storagePath && g.photoStoragePath === asset.storagePath) ||
+        Boolean(asset.dataUrl && g.photoUrl === asset.dataUrl) ||
+        (!g.photoAssetId &&
+          !g.photoStoragePath &&
+          Boolean(asset.fileName && g.photoFileName === asset.fileName));
+
+      if (matched) {
+        const linkedCardsCount = cards.filter((c) => c.guardianId === g.id).length;
+        const guardianFullName = `${g.prefix}${g.firstName} ${g.lastName}`.trim();
+        refs.push({
+          type: 'guardian',
+          id: g.id,
+          label: `ผู้ปกครอง: ${guardianFullName}`,
+          detail:
+            linkedCardsCount > 0
+              ? `${g.relation} • ผูกบัตรรับส่งอยู่ ${linkedCardsCount} ใบ`
+              : `${g.relation} • มีข้อมูลผู้ปกครองในระบบ`,
+        });
+      }
+    }
+
+    for (const fd of this.getFrontDesigns()) {
+      const matched =
+        fd.bgImageAssetId === asset.id ||
+        fd.bgImageUrl === assetRefUri ||
+        Boolean(asset.storageUrl && fd.bgImageUrl === asset.storageUrl) ||
+        Boolean(asset.storagePath && fd.bgImageStoragePath === asset.storagePath);
+      if (matched) {
+        refs.push({
+          type: 'front_design',
+          id: fd.id,
+          label: `แม่แบบหน้าบัตร: ${fd.name || fd.title || fd.id}`,
+          detail: fd.level,
+        });
+      }
+    }
+
+    for (const bd of this.getBackDesigns()) {
+      const matched =
+        bd.bgImageAssetId === asset.id ||
+        bd.bgImageUrl === assetRefUri ||
+        Boolean(asset.storageUrl && bd.bgImageUrl === asset.storageUrl) ||
+        Boolean(asset.storagePath && bd.bgImageStoragePath === asset.storagePath);
+      if (matched) {
+        refs.push({
+          type: 'back_design',
+          id: bd.id,
+          label: `แม่แบบหลังบัตร: ${bd.name || bd.title || bd.id}`,
+          detail: bd.displayMode === 'imageOnly' ? 'ภาพพื้นหลังเต็มใบ' : 'รูปแบบมาตรฐาน',
+        });
+      }
+    }
+
+    const sampleUrl = this.getItem(STORAGE_KEYS.DESIGNER_SAMPLE_PHOTO) || '';
+    const samplePath = this.getItem(STORAGE_KEYS.DESIGNER_SAMPLE_PHOTO_PATH) || '';
+    const sampleAssetId = this.getItem(STORAGE_KEYS.DESIGNER_SAMPLE_PHOTO_ASSET_ID) || '';
+    const sampleMatched =
+      sampleAssetId === asset.id ||
+      sampleUrl === assetRefUri ||
+      Boolean(asset.storageUrl && sampleUrl === asset.storageUrl) ||
+      Boolean(asset.storagePath && samplePath === asset.storagePath);
+    if (sampleMatched) {
+      refs.push({
+        type: 'sample_photo',
+        id: 'designer_sample_photo',
+        label: 'รูปตัวอย่างในหน้าออกแบบบัตร (Card Designer)',
+        detail: 'กำลังตั้งค่าเป็นภาพตัวอย่างระบบ',
+      });
+    }
+
+    return refs;
+  }
+
+  public getFirestoreUsageSummary(): FirestoreUsageSummary {
+    const FIRESTORE_FREE_QUOTA_BYTES = 1024 * 1024 * 1024; // 1 GiB (Spark Free Tier)
+    const encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+    const measureBytes = (value: unknown): number => {
+      try {
+        const str = typeof value === 'string' ? value : JSON.stringify(value);
+        if (!str) return 0;
+        return encoder ? encoder.encode(str).length : str.length * 2;
+      } catch {
+        return 0;
+      }
+    };
+
+    const measureDocs = (docs: unknown[], perDocOverhead = 64): number => {
+      let total = 0;
+      for (const item of docs) {
+        total += measureBytes(item) + perDocOverhead;
+      }
+      return total;
+    };
+
+    const imageAssets = this.getImageAssets();
+    let imageAssetsBytes = 0;
+    for (const asset of imageAssets) {
+      const jsonBytes = measureBytes(asset) + 64;
+      // Ensure assets stored with binary size only still reflect realistic storage footprint if dataUrl absent
+      const effectiveBytes =
+        asset.dataUrl && asset.dataUrl.length > 0
+          ? jsonBytes
+          : jsonBytes + (asset.compressedSize || 0);
+      imageAssetsBytes += effectiveBytes;
+    }
+
+    const students = this.getStudents();
+    const guardians = this.getGuardians();
+    const cards = this.getCards();
+    const frontDesigns = this.getFrontDesigns();
+    const backDesigns = this.getBackDesigns();
+    const printHistory = this.getPrintHistory();
+    const operators = this.getOperatorAccounts();
+
+    const studentsBytes = measureDocs(students);
+    const guardiansBytes = measureDocs(guardians);
+    const cardsBytes = measureDocs(cards);
+    const frontDesignsBytes = measureDocs(frontDesigns);
+    const backDesignsBytes = measureDocs(backDesigns);
+    const printHistoryBytes = measureDocs(printHistory);
+    const operatorsBytes = measureDocs(operators);
+
+    const settingsPayload = {
+      academicYear: this.getAcademicYear(),
+      trayConfig: this.getTrayConfig(),
+      designerSamplePhotoUrl: this.getDesignerSamplePhotoRaw(),
+      designerSamplePhotoPath: this.getItem(STORAGE_KEYS.DESIGNER_SAMPLE_PHOTO_PATH) || '',
+      designerSamplePhotoAssetId: this.getItem(STORAGE_KEYS.DESIGNER_SAMPLE_PHOTO_ASSET_ID) || '',
+    };
+    const settingsBytes = measureBytes(settingsPayload) + 64;
+
+    const breakdown: FirestoreUsageBreakdownItem[] = [
+      {
+        key: 'image_assets',
+        label: 'รูปภาพในคลัง (image_assets)',
+        count: imageAssets.length,
+        bytes: imageAssetsBytes,
+      },
+      {
+        key: 'students',
+        label: 'ข้อมูลนักเรียน',
+        count: students.length,
+        bytes: studentsBytes,
+      },
+      {
+        key: 'guardians',
+        label: 'ข้อมูลผู้ปกครอง',
+        count: guardians.length,
+        bytes: guardiansBytes,
+      },
+      {
+        key: 'cards',
+        label: 'บัตรรับส่งนักเรียน',
+        count: cards.length,
+        bytes: cardsBytes,
+      },
+      {
+        key: 'designs',
+        label: 'แม่แบบหน้า-หลังบัตร',
+        count: frontDesigns.length + backDesigns.length,
+        bytes: frontDesignsBytes + backDesignsBytes,
+      },
+      {
+        key: 'history_and_settings',
+        label: 'ประวัติพิมพ์และตั้งค่าระบบ',
+        count: printHistory.length + operators.length + 1,
+        bytes: printHistoryBytes + operatorsBytes + settingsBytes,
+      },
+    ];
+
+    const totalUsedBytes = breakdown.reduce((sum, item) => sum + item.bytes, 0);
+    const otherDataBytes = Math.max(0, totalUsedBytes - imageAssetsBytes);
+    const remainingBytes = Math.max(0, FIRESTORE_FREE_QUOTA_BYTES - totalUsedBytes);
+    const usedPercentage = Math.min(100, (totalUsedBytes / FIRESTORE_FREE_QUOTA_BYTES) * 100);
+    const totalDocuments =
+      imageAssets.length +
+      students.length +
+      guardians.length +
+      cards.length +
+      frontDesigns.length +
+      backDesigns.length +
+      printHistory.length +
+      operators.length +
+      1;
+
+    return {
+      quotaBytes: FIRESTORE_FREE_QUOTA_BYTES,
+      totalUsedBytes,
+      remainingBytes,
+      usedPercentage,
+      imageAssetsBytes,
+      otherDataBytes,
+      totalDocuments,
+      breakdown,
+    };
   }
 
   public async deleteImageAsset(assetId: string): Promise<void> {

@@ -207,14 +207,14 @@ export function calculateCurrentGrade(
 }
 
 /**
- * Calculate 3-Academic-Year Card Expiry Date (End of academic year: 31 มีนาคม)
+ * Calculate 3-Academic-Year Card Expiry Date (End of academic year: 30 เมษายน)
  * Year 1 (M.1 / M.4) -> valid until end of Year 3 (M.3 / M.6)
- * Expiry date is 31 March of (entryYear + 3) in Buddhist Era
+ * Expiry date is 30 April of (entryYear + 3) in Buddhist Era
  */
 export function calculateCardExpiryDate(entryYear: number): string {
   const expiryBuddhistYear = entryYear + 3;
   const expiryCeYear = expiryBuddhistYear - 543;
-  return `${expiryCeYear}-03-31`;
+  return `${expiryCeYear}-04-30`;
 }
 
 /**
