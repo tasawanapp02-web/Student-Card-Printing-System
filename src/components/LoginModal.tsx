@@ -36,6 +36,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [authError, setAuthError] = useState<{
     message: string;
     needsEmailPasswordSetup?: boolean;
+    needsAuthorizedDomainSetup?: boolean;
   } | null>(null);
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
@@ -110,8 +111,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           message: 'เบราว์เซอร์บล็อกหน้าต่างเข้าสู่ระบบ Google กรุณาอนุญาตป๊อปอัปแล้วลองใหม่',
         });
       } else if (code === 'auth/unauthorized-domain') {
+        const currentHost = window.location.hostname;
         setAuthError({
-          message: 'โดเมนนี้ยังไม่ได้รับอนุญาตใน Firebase Authentication > Settings > Authorized domains',
+          message: `โดเมน "${currentHost}" ยังไม่ได้รับอนุญาตใน Firebase Authentication > Settings > Authorized domains (หากเข้าใช้งานผ่าน GitHub Pages ต้องเพิ่มโดเมนนี้ก่อนเข้าสู่ระบบด้วย Google)`,
+          needsAuthorizedDomainSetup: true,
         });
       } else {
         const msg =
@@ -159,6 +162,24 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-rose-300 text-rose-700 hover:bg-rose-100 rounded-xl font-bold text-[11px] transition-colors"
                   >
                     <span>เปิดหน้าตั้งค่า Email/Password ใน Firebase Console</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
+              {authError.needsAuthorizedDomainSetup && (
+                <div className="space-y-2 pt-1">
+                  <ol className="list-decimal pl-5 space-y-1 text-[11px] text-rose-900">
+                    <li>เปิดหน้า Authentication Settings ใน Firebase Console จากปุ่มด้านล่าง</li>
+                    <li>ไปที่แถบ <strong>Authorized domains</strong> แล้วกด <strong>Add domain</strong></li>
+                    <li>เพิ่มโดเมน <code className="px-1 py-0.5 bg-white rounded border border-rose-200 font-mono">{window.location.hostname}</code> แล้วบันทึก</li>
+                  </ol>
+                  <a
+                    href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-rose-300 text-rose-700 hover:bg-rose-100 rounded-xl font-bold text-[11px] transition-colors"
+                  >
+                    <span>เปิดหน้า Authorized domains ใน Firebase Console</span>
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>

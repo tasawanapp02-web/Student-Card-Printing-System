@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <title>กำลังเปลี่ยนเส้นทาง...</title>
+    <script>
+      // Redirect unknown subpaths on GitHub Pages back to the app entry while preserving query params
+      (function () {
+        var search = window.location.search || '';
+        var hash = window.location.hash || '';
+        var pathParts = window.location.pathname.split('/').filter(Boolean);
+        var target = pathParts.length > 0 && window.location.hostname.endsWith('.github.io')
+          ? '/' + pathParts[0] + '/' + search + hash
+          : '/' + search + hash;
+        window.location.replace(target);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

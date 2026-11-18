@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Download, FileCode, CheckCircle2, Copy, ExternalLink, Globe } from 'lucide-react';
+import { Download, CheckCircle2, ExternalLink, Globe, ShieldCheck } from 'lucide-react';
+import { firebaseConfig } from '../firebase';
 
 interface ExportStandaloneModalProps {
   isOpen: boolean;
@@ -15,6 +16,20 @@ export const ExportStandaloneModal: React.FC<ExportStandaloneModalProps> = ({
   const [copied, setCopied] = useState<boolean>(false);
 
   if (!isOpen) return null;
+
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const authSettingsUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`;
+
+  const handleCopyHostname = async () => {
+    try {
+      await navigator.clipboard.writeText(currentHostname || '<username>.github.io');
+      setCopied(true);
+      onNotify('คัดลอกชื่อโดเมนเรียบร้อยแล้ว', 'success');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      onNotify('ไม่สามารถคัดลอกอัตโนมัติได้', 'error');
+    }
+  };
 
   const handleDownloadStandaloneHtml = () => {
     // Generate clean self-contained HTML bundle
@@ -69,7 +84,7 @@ export const ExportStandaloneModal: React.FC<ExportStandaloneModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-xl w-full overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -77,10 +92,10 @@ export const ExportStandaloneModal: React.FC<ExportStandaloneModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-slate-800 text-sm">
-                ส่งออกไฟล์ index.html สำหรับโฮสต์บน GitHub Pages
+                ตั้งค่าและเผยแพร่เว็บผ่าน GitHub Pages
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Single-Page Application Deployment Guide
+                GitHub Actions Workflow &amp; Firebase Authorized Domains
               </p>
             </div>
           </div>
@@ -97,30 +112,54 @@ export const ExportStandaloneModal: React.FC<ExportStandaloneModalProps> = ({
           <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-emerald-950 space-y-1.5">
             <div className="font-bold flex items-center gap-2 text-sm text-emerald-900">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              พร้อมใช้งานบน GitHub Pages ทันที (No Server Required)
+              รองรับ GitHub Actions Auto-Deploy แล้ว (.github/workflows/deploy.yml)
             </div>
             <p className="text-emerald-800 text-[11px] font-sarabun">
-              โครงสร้างของระบบถูกพัฒนาขึ้นในรูปแบบ Single-Page Application (SPA) บริสุทธิ์
-              ข้อมูลทั้งหมดสามารถบันทึกลง Firestore Online หรือเก็บใน LocalStorage ในเครื่อง และพิมพ์ลงบัตร PVC ด้วยเบราว์เซอร์ได้ทันที
+              ระบบกำหนด Vite Base Path แบบอัตโนมัติ (รองรับทั้ง Subpath เช่น <code className="font-mono">/repo-name/</code> และ Custom Domain) พร้อมไฟล์ <code className="font-mono">.nojekyll</code> และ <code className="font-mono">404.html</code>
             </p>
           </div>
 
-          <div className="space-y-3 pt-1">
-            <div className="font-bold text-slate-800">ขั้นตอนการนำขึ้น GitHub Pages:</div>
-            <ol className="list-decimal pl-4 space-y-2 text-slate-600 font-sarabun">
+          <div className="space-y-2.5 pt-1">
+            <div className="font-bold text-slate-800">1. เปิดใช้งาน GitHub Pages ด้วย GitHub Actions:</div>
+            <ol className="list-decimal pl-4 space-y-1.5 text-slate-600 font-sarabun">
               <li>
-                รันคำสั่ง <code className="px-1.5 py-0.5 bg-slate-100 rounded font-mono text-blue-600 font-bold">npm run build</code> ในโฟลเดอร์โปรเจกต์ ซึ่งจะสร้างไฟล์ผลลัพธ์พร้อมใช้งานในโฟลเดอร์ <code className="px-1.5 py-0.5 bg-slate-100 rounded font-mono">dist/</code>
+                พุชโค้ดขึ้น GitHub Repository (สาขา <code className="px-1.5 py-0.5 bg-slate-100 rounded font-mono">main</code> หรือ <code className="px-1.5 py-0.5 bg-slate-100 rounded font-mono">master</code>)
               </li>
               <li>
-                นำไฟล์ในโฟลเดอร์ <code className="px-1.5 py-0.5 bg-slate-100 rounded font-mono">dist/</code> (รวมถึง <code className="px-1.5 py-0.5 bg-slate-100 rounded font-mono">index.html</code>) อัปโหลดขึ้นสู่ GitHub Repository ของท่าน
+                ไปที่หน้า <strong>Settings &gt; Pages</strong> ใน GitHub Repository แล้วเปลี่ยน <strong>Source</strong> เป็น <strong className="text-blue-700">GitHub Actions</strong>
               </li>
               <li>
-                ไปที่หน้า <strong>Settings &gt; Pages</strong> ใน GitHub Repository แล้วเลือก Source เป็น <strong>Deploy from a branch (main / root)</strong>
-              </li>
-              <li>
-                เว็บไซต์จะเปิดให้บริการผ่าน URL เช่น <code className="text-blue-600 font-mono">https://&lt;username&gt;.github.io/&lt;repo-name&gt;/</code> ทันที
+                Workflow จะรันทดสอบ TypeScript, สั่ง <code className="px-1.5 py-0.5 bg-slate-100 rounded font-mono text-blue-600">bun run build</code> และเผยแพร่ไปยัง <code className="text-blue-600 font-mono">https://&lt;username&gt;.github.io/&lt;repo-name&gt;/</code> ให้อัตโนมัติ
               </li>
             </ol>
+          </div>
+
+          <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-2">
+            <div className="font-bold text-amber-950 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-amber-700" />
+              2. ตั้งค่าสิทธิ์เข้าถึง Firebase บนโดเมน GitHub (สำคัญสำหรับ Google Login)
+            </div>
+            <p className="text-[11px] text-amber-900 font-sarabun leading-relaxed">
+              เมื่อเปิดหน้าเว็บผ่าน GitHub Pages หากต้องการให้ปุ่ม <strong>เข้าสู่ระบบด้วย Google Account</strong> ทำงานได้ ต้องเพิ่มโดเมน <code className="px-1 py-0.5 bg-white rounded border border-amber-300 font-mono">&lt;username&gt;.github.io</code> ในหน้า <strong>Firebase Console &gt; Authentication &gt; Settings &gt; Authorized domains</strong>
+            </p>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <a
+                href={authSettingsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 rounded-xl font-bold text-[11px] transition-colors"
+              >
+                <span>เปิดหน้า Authorized domains</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+              <button
+                type="button"
+                onClick={handleCopyHostname}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl font-medium text-[11px] transition-colors cursor-pointer"
+              >
+                <span>{copied ? 'คัดลอกแล้ว' : `โดเมนปัจจุบัน: ${currentHostname}`}</span>
+              </button>
+            </div>
           </div>
 
           <div className="pt-4 flex items-center justify-end gap-2 border-t border-slate-100">
