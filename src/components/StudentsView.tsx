@@ -1,7 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Student, EducationLevel } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Student, EducationLevel, PickupCard, Guardian } from '../types';
 import { storageService } from '../utils/storage';
-import { calculateCurrentGrade, getCurrentBuddhistYear } from '../utils/thaiDate';
+import {
+  calculateCurrentGrade,
+  getCurrentBuddhistYear,
+  formatThaiDateShort,
+} from '../utils/thaiDate';
 import {
   Users,
   UserPlus,
@@ -15,6 +19,11 @@ import {
   CheckCircle2,
   AlertTriangle,
   Download,
+  CreditCard,
+  Phone,
+  QrCode,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 
 interface StudentsViewProps {
@@ -30,11 +39,15 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     storageService.getAcademicYear()
   );
   const [students, setStudents] = useState<Student[]>(() => storageService.getStudents());
+  const [cards, setCards] = useState<PickupCard[]>(() => storageService.getCards());
+  const [guardians, setGuardians] = useState<Guardian[]>(() => storageService.getGuardians());
 
   useEffect(() => {
     return storageService.subscribe(() => {
       setCurrentAcademicYear(storageService.getAcademicYear());
       setStudents(storageService.getStudents());
+      setCards(storageService.getCards());
+      setGuardians(storageService.getGuardians());
     });
   }, []);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -70,8 +83,13 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
   // Graduation Cleanup Modal
   const [isGraduationModalOpen, setIsGraduationModalOpen] = useState<boolean>(false);
-  const [gradTargetLevel, setGradTargetLevel] = useState<EducationLevel>('มัธยมศึกษาตอนต้น');
+  const [gradTargetLevel, setGradTargetLevel] = useState<'all' | EducationLevel>('all');
   const [gradEntryYear, setGradEntryYear] = useState<number>(currentAcademicYear - 2); // 3 years studied (2569 - 2 = 2567)
+  const [gradSearchQuery, setGradSearchQuery] = useState<string>('');
+  const [gradShowAllStudents, setGradShowAllStudents] = useState<boolean>(false);
+  const [selectedGradStudentIds, setSelectedGradStudentIds] = useState<string[]>([]);
+  const [isConfirmingGradDelete, setIsConfirmingGradDelete] = useState<boolean>(false);
+  const [isExecutingGraduation, setIsExecutingGraduation] = useState<boolean>(false);
 
   // Filter students
   const filteredStudents = students.filter((s) => {
@@ -384,23 +402,129 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const guardianMap = useMemo(() => {
+    const map = new Map<string, Guardian>();
+    guardians.forEach((g) => map.set(g.id, g));
+    return map;
+  }, [guardians]);
+
+  const cardsByStudentMap = useMemo(() => {
+    const map = new Map<string, PickupCard[]>();
+    cards.forEach((c) => {
+      const list = map.get(c.studentId) || [];
+      list.push(c);
+      map.set(c.studentId, list);
+    });
+    return map;
+  }, [cards]);
+
+  const matchingGradStudents = useMemo(() => {
+    const q = gradSearchQuery.toLowerCase().trim();
+    return students.filter((s) => {
+      const matchesLevel = gradTargetLevel === 'all' || s.level === gradTargetLevel;
+      const matchesYear = gradShowAllStudents || s.entryYear <= gradEntryYear;
+      if (!matchesLevel || !matchesYear) return false;
+      if (!q) return true;
+
+      const studentCards = cardsByStudentMap.get(s.studentId) || [];
+      const matchesGuardian = studentCards.some((card) => {
+        const g = guardianMap.get(card.guardianId);
+        if (!g) return false;
+        const gName = `${g.prefix}${g.firstName} ${g.lastName}`.toLowerCase();
+        return (
+          gName.includes(q) ||
+          g.relation.toLowerCase().includes(q) ||
+          g.phone.toLowerCase().includes(q) ||
+          card.qrCodeText.toLowerCase().includes(q)
+        );
+      });
+
+      return (
+        s.studentId.includes(q) ||
+        s.firstName.toLowerCase().includes(q) ||
+        s.lastName.toLowerCase().includes(q) ||
+        s.nickname.toLowerCase().includes(q) ||
+        s.classroom.toLowerCase().includes(q) ||
+        matchesGuardian
+      );
+    });
+  }, [
+    students,
+    gradTargetLevel,
+    gradEntryYear,
+    gradShowAllStudents,
+    gradSearchQuery,
+    cardsByStudentMap,
+    guardianMap,
+  ]);
+
+  const selectedGradIdSet = useMemo(
+    () => new Set(selectedGradStudentIds),
+    [selectedGradStudentIds]
+  );
+
+  const selectedGradCardsCount = useMemo(() => {
+    let count = 0;
+    selectedGradStudentIds.forEach((studentId) => {
+      count += (cardsByStudentMap.get(studentId) || []).length;
+    });
+    return count;
+  }, [selectedGradStudentIds, cardsByStudentMap]);
+
+  const allVisibleGradSelected =
+    matchingGradStudents.length > 0 &&
+    matchingGradStudents.every((s) => selectedGradIdSet.has(s.studentId));
+
+  const handleOpenGraduationModal = () => {
+    setGradTargetLevel('all');
+    setGradEntryYear(currentAcademicYear - 2);
+    setGradSearchQuery('');
+    setGradShowAllStudents(false);
+    setSelectedGradStudentIds([]);
+    setIsConfirmingGradDelete(false);
+    setIsGraduationModalOpen(true);
+  };
+
+  const handleToggleGradStudent = (studentId: string) => {
+    setIsConfirmingGradDelete(false);
+    setSelectedGradStudentIds((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId]
+    );
+  };
+
+  const handleToggleSelectAllGradStudents = () => {
+    setIsConfirmingGradDelete(false);
+    const visibleIds = matchingGradStudents.map((s) => s.studentId);
+    if (allVisibleGradSelected) {
+      const visibleSet = new Set(visibleIds);
+      setSelectedGradStudentIds((prev) => prev.filter((id) => !visibleSet.has(id)));
+    } else {
+      setSelectedGradStudentIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
   // Graduation Cleanup Execution
   const handleExecuteGraduation = async () => {
-    const graduatingGradeLabel = gradTargetLevel === 'มัธยมศึกษาตอนต้น' ? 'ม.3' : 'ม.6';
-    if (
-      confirm(
-        `ยืนยันการยกเลิกและล้างข้อมูลนักเรียนชั้น ${graduatingGradeLabel} (ปีที่เข้าศึกษา พ.ศ. ${gradEntryYear} หรือก่อนหน้า)?\nระบบจะลบข้อมูลนักเรียน, บัตรรับส่งที่ผูกอยู่ และตรวจสอบลบรูปถ่ายผู้ปกครองที่ไม่มีใครอ้างอิงถึงอีกออกจาก Storage โดยอัตโนมัติ`
-      )
-    ) {
-      const result = await storageService.cleanupGraduatedStudents(gradTargetLevel, gradEntryYear);
-      // Reload students
-      const remaining = storageService.getStudents();
-      setStudents(remaining);
+    if (selectedGradStudentIds.length === 0 || isExecutingGraduation) return;
+    setIsExecutingGraduation(true);
+    try {
+      const result = await storageService.cleanupSelectedGraduatedStudents(selectedGradStudentIds);
+      setStudents(storageService.getStudents());
+      setCards(storageService.getCards());
+      setSelectedGradStudentIds([]);
+      setIsConfirmingGradDelete(false);
       setIsGraduationModalOpen(false);
       onNotify(
-        `ดำเนินการยกเลิกข้อมูลนักเรียนจบการศึกษาสำเร็จ: ลบนักเรียน ${result.studentsCount} คน, บัตร ${result.cardsCount} ใบ, ลบไฟล์รูปถ่ายที่ไม่มีผู้อื่นใช้ออกจาก Storage ${result.orphanedPhotosDeleted} ไฟล์`,
+        `ดำเนินการลบข้อมูลที่เลือกสำเร็จ: ลบนักเรียน ${result.studentsCount} คน, บัตรรับส่ง ${result.cardsCount} ใบ, ลบไฟล์รูปถ่ายที่ไม่มีผู้อื่นใช้ออกจาก Storage ${result.orphanedPhotosDeleted} ไฟล์`,
         'success'
       );
+    } catch (error) {
+      console.error('Failed to execute graduation cleanup:', error);
+      onNotify('เกิดข้อผิดพลาดระหว่างการลบข้อมูล กรุณาลองใหม่อีกครั้ง', 'error');
+    } finally {
+      setIsExecutingGraduation(false);
     }
   };
 
@@ -422,8 +546,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           {/* Graduation Cleanup Button */}
           <button
             type="button"
-            onClick={() => setIsGraduationModalOpen(true)}
-            className="px-3 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl flex items-center gap-1.5 transition-colors"
+            onClick={handleOpenGraduationModal}
+            className="px-3 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <GraduationCap className="w-4 h-4 text-rose-600" />
             ระบบยกเลิกข้อมูลเมื่อจบการศึกษา
@@ -922,113 +1046,480 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       {/* Graduation Cleanup Modal */}
       {isGraduationModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-            <div className="p-4 border-b border-rose-100 bg-rose-50/50 flex items-center justify-between">
-              <h3 className="font-bold text-rose-950 text-sm flex items-center gap-2">
-                <GraduationCap className="w-5 h-5 text-rose-600" />
-                ระบบยกเลิกข้อมูลเมื่อจบการศึกษาประจำปี
-              </h3>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-rose-100 bg-rose-50/50 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="font-bold text-rose-950 text-sm flex items-center gap-2">
+                  <GraduationCap className="w-5 h-5 text-rose-600" />
+                  ระบบยกเลิกข้อมูลเมื่อจบการศึกษาประจำปี
+                </h3>
+                <p className="text-[11px] text-rose-700/80 mt-0.5">
+                  แสดงรายชื่อนักเรียนพร้อมบัตรรับส่งของผู้ปกครองที่ผูกอยู่ และเลือกรายชื่อที่ต้องการลบออกจากระบบ
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={() => setIsGraduationModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1 rounded-lg"
+                onClick={() => {
+                  setIsConfirmingGradDelete(false);
+                  setIsGraduationModalOpen(false);
+                }}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1.5 rounded-lg cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5 text-xs text-amber-900">
+            {/* Filters & Selection Controls */}
+            <div className="p-4 border-b border-slate-200 bg-slate-50/60 space-y-3 shrink-0">
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 text-xs text-amber-900">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <p>
-                  ระบบจะตรวจสอบนักเรียนที่ครบกำหนดจบการศึกษา 3 ปีการศึกษา (ม.3 หรือ ม.6) ยกเลิกบัตรรับส่งที่ผูกอยู่ และ <strong>ตรวจสอบลบไฟล์รูปถ่ายผู้ปกครองที่ไม่มีการอ้างอิงถึงอีก</strong> ออกจาก Firebase Storage อัตโนมัติ เพื่อประหยัดพื้นที่จัดเก็บ
+                  เลือกรายชื่อนักเรียนที่ต้องการลบออกจากระบบ ระบบจะลบบัตรรับส่งของผู้ปกครองที่ผูกอยู่กับนักเรียนที่เลือก และ{' '}
+                  <strong>ตรวจสอบลบไฟล์รูปถ่ายที่ไม่มีการอ้างอิงถึงอีก</strong> ออกจาก Firebase Storage อัตโนมัติ
                 </p>
               </div>
 
-              {/* Target Level */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  เลือกระดับชั้นที่จบการศึกษา
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGradTargetLevel('มัธยมศึกษาตอนต้น');
-                      setGradEntryYear(currentAcademicYear - 2);
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
+                {/* Target Level */}
+                <div className="lg:col-span-5">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    ช่วงชั้นที่ต้องการแสดง
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGradTargetLevel('all');
+                        setIsConfirmingGradDelete(false);
+                      }}
+                      className={`py-1.5 px-2 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                        gradTargetLevel === 'all'
+                          ? 'bg-slate-800 text-white border-slate-800 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      ทั้งหมด
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGradTargetLevel('มัธยมศึกษาตอนต้น');
+                        setIsConfirmingGradDelete(false);
+                      }}
+                      className={`py-1.5 px-2 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                        gradTargetLevel === 'มัธยมศึกษาตอนต้น'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      ม.ต้น (ม.3)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGradTargetLevel('มัธยมศึกษาตอนปลาย');
+                        setIsConfirmingGradDelete(false);
+                      }}
+                      className={`py-1.5 px-2 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                        gradTargetLevel === 'มัธยมศึกษาตอนปลาย'
+                          ? 'bg-rose-700 text-white border-rose-700 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      ม.ปลาย (ม.6)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Graduating Admission Year */}
+                <div className="lg:col-span-3">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    ปี พ.ศ. ที่เข้าศึกษา (≤ ปีนี้)
+                  </label>
+                  <input
+                    type="number"
+                    disabled={gradShowAllStudents}
+                    value={gradEntryYear}
+                    onChange={(e) => {
+                      setGradEntryYear(parseInt(e.target.value, 10) || currentAcademicYear - 2);
+                      setIsConfirmingGradDelete(false);
                     }}
-                    className={`py-2 text-xs font-semibold rounded-xl border transition-all ${
-                      gradTargetLevel === 'มัธยมศึกษาตอนต้น'
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    className={`w-full px-3 py-1.5 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-sarabun ${
+                      gradShowAllStudents ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white'
                     }`}
-                  >
-                    มัธยมศึกษาตอนต้น (ม.3 จบการศึกษา)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGradTargetLevel('มัธยมศึกษาตอนปลาย');
-                      setGradEntryYear(currentAcademicYear - 2);
-                    }}
-                    className={`py-2 text-xs font-semibold rounded-xl border transition-all ${
-                      gradTargetLevel === 'มัธยมศึกษาตอนปลาย'
-                        ? 'bg-rose-700 text-white border-rose-700 shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    มัธยมศึกษาตอนปลาย (ม.6 จบการศึกษา)
-                  </button>
+                  />
+                </div>
+
+                {/* Search Input */}
+                <div className="lg:col-span-4">
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    ค้นหานักเรียนหรือผู้ปกครอง
+                  </label>
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={gradSearchQuery}
+                      onChange={(e) => setGradSearchQuery(e.target.value)}
+                      placeholder="รหัส, ชื่อนร., ห้อง, ชื่อผู้ปกครอง..."
+                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-sarabun"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Graduating Admission Year */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  ปี พ.ศ. ที่เข้ารับการศึกษา (เข้าปีนี้ = จบการศึกษาแล้วหลังครบ 3 ปี)
-                </label>
-                <input
-                  type="number"
-                  value={gradEntryYear}
-                  onChange={(e) => setGradEntryYear(parseInt(e.target.value, 10) || currentAcademicYear - 2)}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-sarabun"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  เช่น เข้าปี พ.ศ. {gradEntryYear} → ศึกษาครบ 3 ปีการศึกษาในปี {currentAcademicYear}
-                </p>
-              </div>
+              {/* Select All + Show All Toggle */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={matchingGradStudents.length === 0}
+                    onClick={handleToggleSelectAllGradStudents}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-colors ${
+                      matchingGradStudents.length === 0
+                        ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                        : allVisibleGradSelected
+                        ? 'bg-rose-600 text-white border-rose-600 cursor-pointer'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50 cursor-pointer'
+                    }`}
+                  >
+                    {allVisibleGradSelected ? (
+                      <CheckSquare className="w-3.5 h-3.5" />
+                    ) : (
+                      <Square className="w-3.5 h-3.5" />
+                    )}
+                    {allVisibleGradSelected
+                      ? `ยกเลิกเลือกทั้งหมดในรายการ (${matchingGradStudents.length})`
+                      : `เลือกทั้งหมดในรายการ (${matchingGradStudents.length} คน)`}
+                  </button>
 
-              {/* Count of graduating students affected */}
-              {(() => {
-                const affected = students.filter(
-                  (s) => s.level === gradTargetLevel && s.entryYear <= gradEntryYear
-                );
-                return (
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                    <span className="font-semibold text-slate-800">
-                      จำนวนนักเรียนที่อยู่ในเกณฑ์ยกเลิกข้อมูล:
-                    </span>{' '}
-                    <strong className="text-rose-600 font-bold text-sm">{affected.length}</strong> คน
+                  {selectedGradStudentIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedGradStudentIds([]);
+                        setIsConfirmingGradDelete(false);
+                      }}
+                      className="text-xs font-medium text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                    >
+                      ล้างที่เลือกทั้งหมด
+                    </button>
+                  )}
+
+                  <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={gradShowAllStudents}
+                      onChange={(e) => {
+                        setGradShowAllStudents(e.target.checked);
+                        setIsConfirmingGradDelete(false);
+                      }}
+                      className="rounded text-rose-600 focus:ring-rose-500"
+                    />
+                    <span>แสดงนักเรียนทุกชั้นปี</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-600">
+                    พบ <strong className="text-slate-900">{matchingGradStudents.length}</strong> คน
+                  </span>
+                  <span className="px-2.5 py-1 bg-rose-100/80 border border-rose-200 rounded-lg text-rose-800 font-semibold">
+                    เลือกแล้ว {selectedGradStudentIds.length} คน • บัตร {selectedGradCardsCount} ใบ
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Scrollable Student List with Embedded Guardian Pickup Cards */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-100/60">
+              {matchingGradStudents.length > 0 ? (
+                matchingGradStudents.map((s) => {
+                  const isSelected = selectedGradIdSet.has(s.studentId);
+                  const gradeInfo = calculateCurrentGrade(s.level, s.entryYear, currentAcademicYear);
+                  const studentCards = cardsByStudentMap.get(s.studentId) || [];
+
+                  return (
+                    <div
+                      key={s.studentId}
+                      className={`rounded-2xl border transition-all overflow-hidden ${
+                        isSelected
+                          ? 'bg-rose-50/50 border-rose-300 ring-1 ring-rose-200 shadow-xs'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      {/* Student Row Header (Clickable Checkbox) */}
+                      <div
+                        onClick={() => handleToggleGradStudent(s.studentId)}
+                        className="p-3.5 flex flex-wrap items-center justify-between gap-3 cursor-pointer select-none"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={`shrink-0 transition-colors ${
+                              isSelected ? 'text-rose-600' : 'text-slate-400'
+                            }`}
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-5 h-5" />
+                            ) : (
+                              <Square className="w-5 h-5" />
+                            )}
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md font-mono font-bold text-xs">
+                                {s.studentId}
+                              </span>
+                              <span className="font-bold text-slate-800 text-sm font-sarabun">
+                                {s.prefix}
+                                {s.firstName} {s.lastName}
+                              </span>
+                              {s.nickname && (
+                                <span className="text-xs text-slate-500 font-sarabun">
+                                  ({s.nickname})
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-slate-500 font-sarabun">
+                              <span
+                                className={`px-2 py-0.5 rounded-full font-medium ${
+                                  s.level === 'มัธยมศึกษาตอนต้น'
+                                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}
+                              >
+                                {s.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'}
+                              </span>
+                              <span>ห้อง {s.classroom}</span>
+                              <span>•</span>
+                              <span>เข้าศึกษา พ.ศ. {s.entryYear}</span>
+                              <span>•</span>
+                              <span
+                                className={`inline-flex items-center gap-1 font-semibold ${
+                                  gradeInfo.isGraduated ? 'text-rose-700' : 'text-emerald-700'
+                                }`}
+                              >
+                                <GraduationCap className="w-3 h-3" />
+                                {gradeInfo.gradeLabel}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border ${
+                              studentCards.length > 0
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                : 'bg-slate-50 text-slate-500 border-slate-200'
+                            }`}
+                          >
+                            <CreditCard className="w-3.5 h-3.5" />
+                            บัตรรับส่ง {studentCards.length} ใบ
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Guardian Pickup Cards Nested Inside Student Info */}
+                      <div className="px-4 pb-3.5 pt-2 border-t border-slate-100 bg-slate-50/70">
+                        <div className="text-[11px] font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
+                          <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
+                          บัตรรับส่งของผู้ปกครองภายในข้อมูลนักเรียน ({studentCards.length} ใบ)
+                        </div>
+
+                        {studentCards.length > 0 ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            {studentCards.map((card) => {
+                              const guardian = guardianMap.get(card.guardianId);
+                              const statusStyle =
+                                card.status === 'active'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : card.status === 'expired'
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : 'bg-rose-50 text-rose-700 border-rose-200';
+                              const statusLabel =
+                                card.status === 'active'
+                                  ? 'ใช้งานปกติ'
+                                  : card.status === 'expired'
+                                  ? 'หมดอายุ'
+                                  : 'ยกเลิกแล้ว';
+
+                              return (
+                                <div
+                                  key={card.id}
+                                  className="p-2.5 bg-white rounded-xl border border-slate-200/90 flex items-center gap-3 shadow-2xs"
+                                >
+                                  {guardian ? (
+                                    <img
+                                      src={storageService.resolveImageSrc(
+                                        guardian.photoUrl,
+                                        guardian.photoAssetId
+                                      )}
+                                      alt={`${guardian.firstName} ${guardian.lastName}`}
+                                      className="w-11 h-14 object-cover rounded-lg border border-slate-200 bg-slate-100 shrink-0"
+                                      onError={(e) => {
+                                        const fallback = storageService.getImageFallbackDataUrl(
+                                          guardian.photoUrl,
+                                          guardian.photoAssetId
+                                        );
+                                        if (fallback && e.currentTarget.src !== fallback) {
+                                          e.currentTarget.src = fallback;
+                                        }
+                                      }}
+                                    />
+                                  ) : (
+                                    <div className="w-11 h-14 rounded-lg border border-slate-200 bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 shrink-0">
+                                      ไม่มีรูป
+                                    </div>
+                                  )}
+
+                                  <div className="min-w-0 flex-1 space-y-1">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="font-bold text-xs text-slate-800 truncate font-sarabun">
+                                        {guardian
+                                          ? `${guardian.prefix}${guardian.firstName} ${guardian.lastName}`
+                                          : 'ไม่พบข้อมูลผู้ปกครอง'}
+                                      </div>
+                                      <span
+                                        className={`px-1.5 py-0.5 rounded-md border text-[10px] font-semibold shrink-0 ${statusStyle}`}
+                                      >
+                                        {statusLabel}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 font-sarabun">
+                                      {guardian?.relation && (
+                                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-medium">
+                                          {guardian.relation}
+                                        </span>
+                                      )}
+                                      {guardian?.phone && (
+                                        <span className="inline-flex items-center gap-1 text-slate-500">
+                                          <Phone className="w-3 h-3" />
+                                          {guardian.phone}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-500">
+                                      <span className="inline-flex items-center gap-1 font-mono text-slate-600">
+                                        <QrCode className="w-3 h-3 text-slate-400" />
+                                        {card.qrCodeText || card.id}
+                                      </span>
+                                      <span>
+                                        ออกบัตร {formatThaiDateShort(card.issueDate)} • หมดอายุ{' '}
+                                        {formatThaiDateShort(card.expiryDate)}
+                                      </span>
+                                      {card.printCount > 0 && (
+                                        <span className="text-indigo-600 font-medium">
+                                          (พิมพ์แล้ว {card.printCount} ครั้ง)
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-slate-400 italic py-1">
+                            ไม่มีบัตรรับส่งของผู้ปกครองที่ผูกอยู่กับนักเรียนคนนี้
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="py-12 text-center bg-white rounded-2xl border border-dashed border-slate-300 text-slate-500 space-y-2">
+                  <GraduationCap className="w-8 h-8 text-slate-300 mx-auto" />
+                  <p className="text-xs font-semibold text-slate-600">
+                    ไม่พบรายชื่อนักเรียนที่ตรงกับเงื่อนไขการจบการศึกษา
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    ลองปรับปี พ.ศ. ที่เข้าศึกษา, เปลี่ยนช่วงชั้น หรือเลือก &ldquo;แสดงนักเรียนทุกชั้นปี&rdquo;
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-200 bg-white shrink-0">
+              {!isConfirmingGradDelete ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="text-xs text-slate-600">
+                    เลือกทั้งหมด{' '}
+                    <strong className="text-rose-600">{selectedGradStudentIds.length}</strong> คน
+                    {selectedGradStudentIds.length > 0 && (
+                      <span>
+                        {' '}
+                        (ระบบจะลบบัตรรับส่งที่ผูกอยู่ด้วย{' '}
+                        <strong className="text-rose-600">{selectedGradCardsCount}</strong> ใบ)
+                      </span>
+                    )}
                   </div>
-                );
-              })()}
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsGraduationModalOpen(false)}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExecuteGraduation}
-                  className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs"
-                >
-                  ยืนยันล้างข้อมูลผู้จบการศึกษา
-                </button>
-              </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsGraduationModalOpen(false)}
+                      className="px-4 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 cursor-pointer"
+                    >
+                      ปิดหน้าต่าง
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedGradStudentIds.length === 0}
+                      onClick={() => setIsConfirmingGradDelete(true)}
+                      className={`px-5 py-2 text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 transition-all ${
+                        selectedGradStudentIds.length > 0
+                          ? 'text-white bg-rose-600 hover:bg-rose-700 cursor-pointer'
+                          : 'text-slate-400 bg-slate-200 cursor-not-allowed'
+                      }`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      ลบรายชื่อที่เลือก ({selectedGradStudentIds.length} คน)
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2 text-xs text-rose-900">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">
+                        ยืนยันการลบนักเรียน {selectedGradStudentIds.length} คน และบัตรรับส่ง{' '}
+                        {selectedGradCardsCount} ใบ ออกจากระบบถาวรใช่หรือไม่?
+                      </div>
+                      <div className="text-[11px] text-rose-700 mt-0.5">
+                        การลบนี้ไม่สามารถย้อนกลับได้ และระบบจะลบรูปถ่ายที่ไม่มีผู้ปกครองคนอื่นอ้างอิงออกให้ด้วย
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 shrink-0">
+                    <button
+                      type="button"
+                      disabled={isExecutingGraduation}
+                      onClick={() => setIsConfirmingGradDelete(false)}
+                      className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 cursor-pointer"
+                    >
+                      ย้อนกลับ
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isExecutingGraduation}
+                      onClick={handleExecuteGraduation}
+                      className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs cursor-pointer disabled:opacity-60"
+                    >
+                      {isExecutingGraduation ? 'กำลังลบข้อมูล...' : 'ยืนยันลบออกจากระบบ'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

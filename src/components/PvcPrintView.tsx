@@ -585,7 +585,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
           <div className="py-4 px-6 bg-slate-100 rounded-2xl border border-slate-200 flex justify-center w-full overflow-auto max-h-[640px]">
             {/* Tray Body (Proportional: scale 2.4) */}
             <div
-              className="relative bg-slate-800 rounded-2xl shadow-2xl border-4 border-slate-900 select-none overflow-hidden transition-all shrink-0"
+              className="relative bg-slate-800 rounded-none shadow-2xl border-4 border-slate-900 select-none overflow-hidden transition-all shrink-0"
               style={{
                 width: `${trayConfig.trayWidthMm * 2.4}px`,
                 height: `${trayConfig.trayHeightMm * 2.4}px`,

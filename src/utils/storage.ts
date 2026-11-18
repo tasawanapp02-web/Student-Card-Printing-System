@@ -3309,22 +3309,27 @@ class StorageService {
     return { success: true, removedCardsCount: cardsToRemove.length };
   }
 
-  public async cleanupGraduatedStudents(
-    targetLevel: EducationLevel,
-    graduatingEntryYear: number
+  public async cleanupSelectedGraduatedStudents(
+    studentIds: string[]
   ): Promise<{
     studentsCount: number;
     cardsCount: number;
     orphanedPhotosDeleted: number;
     cleanedStudentIds: string[];
   }> {
-    const allStudents = this.getStudents();
-    const graduatingStudents = allStudents.filter(
-      (s) => s.level === targetLevel && s.entryYear <= graduatingEntryYear
-    );
-
-    const graduatingIds = new Set(graduatingStudents.map((s) => s.studentId));
+    const graduatingIds = new Set(studentIds);
     if (graduatingIds.size === 0) {
+      return {
+        studentsCount: 0,
+        cardsCount: 0,
+        orphanedPhotosDeleted: 0,
+        cleanedStudentIds: [],
+      };
+    }
+
+    const allStudents = this.getStudents();
+    const graduatingStudents = allStudents.filter((s) => graduatingIds.has(s.studentId));
+    if (graduatingStudents.length === 0) {
       return {
         studentsCount: 0,
         cardsCount: 0,
@@ -3362,8 +3367,25 @@ class StorageService {
       studentsCount: graduatingStudents.length,
       cardsCount: affectedCards.length,
       orphanedPhotosDeleted,
-      cleanedStudentIds: Array.from(graduatingIds),
+      cleanedStudentIds: graduatingStudents.map((s) => s.studentId),
     };
+  }
+
+  public async cleanupGraduatedStudents(
+    targetLevel: EducationLevel,
+    graduatingEntryYear: number
+  ): Promise<{
+    studentsCount: number;
+    cardsCount: number;
+    orphanedPhotosDeleted: number;
+    cleanedStudentIds: string[];
+  }> {
+    const allStudents = this.getStudents();
+    const graduatingIds = allStudents
+      .filter((s) => s.level === targetLevel && s.entryYear <= graduatingEntryYear)
+      .map((s) => s.studentId);
+
+    return this.cleanupSelectedGraduatedStudents(graduatingIds);
   }
 
   /**
