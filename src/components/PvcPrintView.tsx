@@ -209,7 +209,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
 
       {/* -------------------- SCREEN UI -------------------- */}
       {/* Top Banner */}
-      <div className="no-print bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="no-print bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <Printer className="w-5 h-5 text-blue-600" />
@@ -220,7 +220,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center justify-end gap-2 flex-wrap">
           <button
             type="button"
             onClick={handleToggleRotateTray180}

@@ -321,7 +321,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-blue-600" />
@@ -332,7 +332,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {/* Tab Switcher */}
           <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs">
             <button
