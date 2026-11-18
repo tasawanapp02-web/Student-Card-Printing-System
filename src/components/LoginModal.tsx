@@ -36,7 +36,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [authError, setAuthError] = useState<{
     message: string;
     needsEmailPasswordSetup?: boolean;
-    needsAuthorizedDomainSetup?: boolean;
   } | null>(null);
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
@@ -95,37 +94,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setAuthError(null);
-    setIsSigningIn(true);
-    try {
-      const account = await storageService.loginWithGoogle();
-      onLoginSuccess(account);
-      onNotify(`เข้าสู่ระบบด้วย Google สำเร็จ (${account.fullName})`, 'success');
-    } catch (err: unknown) {
-      const code = (err as { code?: string })?.code || '';
-      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-        setAuthError({ message: 'ยกเลิกการเข้าสู่ระบบด้วย Google' });
-      } else if (code === 'auth/popup-blocked') {
-        setAuthError({
-          message: 'เบราว์เซอร์บล็อกหน้าต่างเข้าสู่ระบบ Google กรุณาอนุญาตป๊อปอัปแล้วลองใหม่',
-        });
-      } else if (code === 'auth/unauthorized-domain') {
-        const currentHost = window.location.hostname;
-        setAuthError({
-          message: `โดเมน "${currentHost}" ยังไม่ได้รับอนุญาตใน Firebase Authentication > Settings > Authorized domains (หากเข้าใช้งานผ่าน GitHub Pages ต้องเพิ่มโดเมนนี้ก่อนเข้าสู่ระบบด้วย Google)`,
-          needsAuthorizedDomainSetup: true,
-        });
-      } else {
-        const msg =
-          err instanceof Error ? err.message : 'เข้าสู่ระบบด้วย Google ไม่สำเร็จ';
-        setAuthError({ message: msg });
-      }
-    } finally {
-      setIsSigningIn(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-150 my-auto">
@@ -166,62 +134,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </a>
                 </div>
               )}
-              {authError.needsAuthorizedDomainSetup && (
-                <div className="space-y-2 pt-1">
-                  <ol className="list-decimal pl-5 space-y-1 text-[11px] text-rose-900">
-                    <li>เปิดหน้า Authentication Settings ใน Firebase Console จากปุ่มด้านล่าง</li>
-                    <li>ไปที่แถบ <strong>Authorized domains</strong> แล้วกด <strong>Add domain</strong></li>
-                    <li>เพิ่มโดเมน <code className="px-1 py-0.5 bg-white rounded border border-rose-200 font-mono">{window.location.hostname}</code> แล้วบันทึก</li>
-                  </ol>
-                  <a
-                    href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-rose-300 text-rose-700 hover:bg-rose-100 rounded-xl font-bold text-[11px] transition-colors"
-                  >
-                    <span>เปิดหน้า Authorized domains ใน Firebase Console</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              )}
             </div>
           )}
-
-          {/* Google Account Sign-In */}
-          <button
-            type="button"
-            disabled={isSigningIn}
-            onClick={handleGoogleLogin}
-            className="w-full py-2.5 px-4 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl shadow-2xs flex items-center justify-center gap-2.5 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                fill="#4285F4"
-                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
-              />
-            </svg>
-            <span>เข้าสู่ระบบด้วย Google Account (Admin)</span>
-          </button>
-
-          <div className="relative flex items-center py-0.5">
-            <div className="flex-grow border-t border-slate-200" />
-            <span className="shrink mx-3 text-[10px] font-medium text-slate-400 font-sarabun">
-              หรือเข้าสู่ระบบด้วย User / Password
-            </span>
-            <div className="flex-grow border-t border-slate-200" />
-          </div>
 
           <form onSubmit={handlePasswordLogin} className="space-y-3.5">
             <div>

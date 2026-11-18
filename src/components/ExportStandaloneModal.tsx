@@ -134,22 +134,22 @@ export const ExportStandaloneModal: React.FC<ExportStandaloneModalProps> = ({
             </ol>
           </div>
 
-          <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-2">
-            <div className="font-bold text-amber-950 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-amber-700" />
-              2. ตั้งค่าสิทธิ์เข้าถึง Firebase บนโดเมน GitHub (สำคัญสำหรับ Google Login)
+          <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2">
+            <div className="font-bold text-blue-950 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-blue-700" />
+              2. การเข้าสู่ระบบผ่าน GitHub Pages (User / Password)
             </div>
-            <p className="text-[11px] text-amber-900 font-sarabun leading-relaxed">
-              เมื่อเปิดหน้าเว็บผ่าน GitHub Pages หากต้องการให้ปุ่ม <strong>เข้าสู่ระบบด้วย Google Account</strong> ทำงานได้ ต้องเพิ่มโดเมน <code className="px-1 py-0.5 bg-white rounded border border-amber-300 font-mono">&lt;username&gt;.github.io</code> ในหน้า <strong>Firebase Console &gt; Authentication &gt; Settings &gt; Authorized domains</strong>
+            <p className="text-[11px] text-blue-900 font-sarabun leading-relaxed">
+              ระบบใช้การยืนยันตัวตนด้วย <strong>User / Password (Email/Password Provider)</strong> บน Firebase Authentication ซึ่งสามารถใช้งานบนโดเมน <code className="px-1 py-0.5 bg-white rounded border border-blue-200 font-mono">&lt;username&gt;.github.io</code> ได้ทันที โดยแนะนำให้ตรวจสอบว่าเปิดใช้งาน <strong>Email/Password</strong> ใน Firebase Console แล้ว
             </p>
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <a
                 href={authSettingsUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 rounded-xl font-bold text-[11px] transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-300 text-blue-900 hover:bg-blue-100 rounded-xl font-bold text-[11px] transition-colors"
               >
-                <span>เปิดหน้า Authorized domains</span>
+                <span>เปิดหน้าตั้งค่า Firebase Authentication</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
               <button
