@@ -1,0 +1,574 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Default-Deny Catch-All Safety Net (Must be first)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HARDENED HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Allows verified OAuth users (Google) OR Firebase Email/Password provider users
+    function isAuthorizedAuth() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.firebase.sign_in_provider == 'password'
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidOptionalAssetId(id) {
+      return id is string && (id == '' || isValidId(id));
+    }
+
+    function isValidStudentCode(code) {
+      return code is string && code.size() == 5 && code.matches('^[0-9]{5}$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Bootstrapped admin ALWAYS requires verified email to defeat unverified password spoofing
+    function isBootstrappedAdmin() {
+      return isEmailVerified() && request.auth.token.email == 'tasawan_app02@pcccr.ac.th';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isAuthorizedAuth() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidLevel(level) {
+      return level in ['มัธยมศึกษาตอนต้น', 'มัธยมศึกษาตอนปลาย'];
+    }
+
+    // --- VALIDATION BLUEPRINTS (ANTI-UPDATE-GAP) ---
+    function isValidAdminDoc(data) {
+      return data.keys().hasAll(['email', 'role', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['email', 'role', 'createdAt', 'updatedAt'])
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.role == 'admin'
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidOperatorAccount(data, docId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'uid', 'username', 'email',
+          'fullName', 'position', 'role', 'isActive', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'uid', 'username', 'email',
+          'fullName', 'position', 'role', 'isActive', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == docId
+        && isValidId(data.ownerId)
+        && isValidId(data.uid)
+        && data.username is string && data.username.size() >= 1 && data.username.size() <= 64
+        && data.username.matches('^[a-zA-Z0-9_.\\-]+$')
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 150
+        && data.position is string && data.position.size() <= 150
+        && data.role == 'admin'
+        && data.isActive is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTrayConfig(tc) {
+      return tc is map
+        && tc.keys().hasAll([
+          'trayWidthMm', 'trayHeightMm', 'cardWidthMm', 'cardHeightMm',
+          'card1X', 'card1Y', 'card2X', 'card2Y', 'printerProfile'
+        ])
+        && tc.keys().hasOnly([
+          'trayWidthMm', 'trayHeightMm', 'cardWidthMm', 'cardHeightMm',
+          'card1X', 'card1Y', 'card2X', 'card2Y', 'printerProfile', 'rotate180'
+        ])
+        && tc.trayWidthMm is number && tc.trayWidthMm >= 50 && tc.trayWidthMm <= 500
+        && tc.trayHeightMm is number && tc.trayHeightMm >= 50 && tc.trayHeightMm <= 500
+        && tc.cardWidthMm is number && tc.cardWidthMm >= 20 && tc.cardWidthMm <= 200
+        && tc.cardHeightMm is number && tc.cardHeightMm >= 20 && tc.cardHeightMm <= 200
+        && tc.card1X is number && tc.card1X >= 0 && tc.card1X <= 500
+        && tc.card1Y is number && tc.card1Y >= 0 && tc.card1Y <= 500
+        && tc.card2X is number && tc.card2X >= 0 && tc.card2X <= 500
+        && tc.card2Y is number && tc.card2Y >= 0 && tc.card2Y <= 500
+        && tc.printerProfile is string && tc.printerProfile.size() <= 200
+        && (!('rotate180' in tc) || tc.rotate180 is bool);
+    }
+
+    function isValidSystemSettings(data) {
+      return data.keys().hasAll(['ownerId', 'academicYear', 'trayConfig', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'ownerId', 'academicYear', 'trayConfig',
+          'designerSamplePhotoUrl', 'designerSamplePhotoPath', 'designerSamplePhotoAssetId',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.academicYear is int && data.academicYear >= 2500 && data.academicYear <= 2700
+        && isValidTrayConfig(data.trayConfig)
+        && (!('designerSamplePhotoUrl' in data) || (data.designerSamplePhotoUrl is string && data.designerSamplePhotoUrl.size() <= 2048))
+        && (!('designerSamplePhotoPath' in data) || (data.designerSamplePhotoPath is string && data.designerSamplePhotoPath.size() <= 512))
+        && (!('designerSamplePhotoAssetId' in data) || isValidOptionalAssetId(data.designerSamplePhotoAssetId))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFrontCardDesign(data, docId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'level', 'title', 'subtitle',
+          'bgImageUrl', 'bgType', 'elements', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'name', 'isDefault', 'level', 'title', 'subtitle',
+          'bgImageUrl', 'bgImageStoragePath', 'bgImageAssetId', 'bgType', 'bgLayerAbovePhoto',
+          'elements', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == docId
+        && isValidId(data.ownerId)
+        && (!('name' in data) || (data.name is string && data.name.size() <= 200))
+        && (!('isDefault' in data) || data.isDefault is bool)
+        && isValidLevel(data.level)
+        && data.title is string && data.title.size() <= 200
+        && data.subtitle is string && data.subtitle.size() <= 200
+        && data.bgImageUrl is string && data.bgImageUrl.size() <= 10000
+        && (!('bgImageStoragePath' in data) || (data.bgImageStoragePath is string && data.bgImageStoragePath.size() <= 512))
+        && (!('bgImageAssetId' in data) || isValidOptionalAssetId(data.bgImageAssetId))
+        && data.bgType in ['preset', 'custom']
+        && (!('bgLayerAbovePhoto' in data) || data.bgLayerAbovePhoto is bool)
+        && data.elements is map
+        && data.elements.keys().hasAll([
+          'title', 'subtitle', 'guardianPhoto', 'guardianName', 'studentName',
+          'studentClass', 'studentId', 'issueDate', 'expiryDate', 'qrCode', 'schoolLogo'
+        ])
+        && data.elements.keys().hasOnly([
+          'title', 'subtitle', 'guardianPhoto', 'guardianName', 'studentName',
+          'studentClass', 'studentId', 'issueDate', 'expiryDate', 'qrCode', 'schoolLogo'
+        ])
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBackCardDesign(data, docId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'displayMode', 'title', 'subtitle',
+          'rules', 'accentColor', 'textColor', 'bgColor', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'name', 'isDefault', 'displayMode', 'title', 'subtitle',
+          'rules', 'emergencyLabel', 'emergencyPhone', 'footerNote',
+          'accentColor', 'textColor', 'bgColor', 'bgImageUrl', 'bgImageStoragePath',
+          'bgImageAssetId', 'showLogo', 'showSignatureBox', 'signatureLabel', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == docId
+        && isValidId(data.ownerId)
+        && (!('name' in data) || (data.name is string && data.name.size() <= 200))
+        && (!('isDefault' in data) || data.isDefault is bool)
+        && data.displayMode in ['template', 'imageOnly']
+        && data.title is string && data.title.size() <= 200
+        && data.subtitle is string && data.subtitle.size() <= 200
+        && data.rules is list && data.rules.size() <= 12
+        && (data.rules.size() == 0 || (data.rules[0] is string && data.rules[0].size() <= 300))
+        && (!('emergencyLabel' in data) || (data.emergencyLabel is string && data.emergencyLabel.size() <= 200))
+        && (!('emergencyPhone' in data) || (data.emergencyPhone is string && data.emergencyPhone.size() <= 100))
+        && (!('footerNote' in data) || (data.footerNote is string && data.footerNote.size() <= 300))
+        && data.accentColor is string && data.accentColor.size() <= 30
+        && data.textColor is string && data.textColor.size() <= 30
+        && data.bgColor is string && data.bgColor.size() <= 30
+        && (!('bgImageUrl' in data) || (data.bgImageUrl is string && data.bgImageUrl.size() <= 2048))
+        && (!('bgImageStoragePath' in data) || (data.bgImageStoragePath is string && data.bgImageStoragePath.size() <= 512))
+        && (!('bgImageAssetId' in data) || isValidOptionalAssetId(data.bgImageAssetId))
+        && (!('showLogo' in data) || data.showLogo is bool)
+        && (!('showSignatureBox' in data) || data.showSignatureBox is bool)
+        && (!('signatureLabel' in data) || (data.signatureLabel is string && data.signatureLabel.size() <= 150))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudent(data, docId) {
+      return data.keys().hasAll([
+          'studentId', 'ownerId', 'prefix', 'firstName', 'lastName',
+          'level', 'classroom', 'entryYear', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'studentId', 'ownerId', 'prefix', 'firstName', 'lastName', 'nickname',
+          'level', 'classroom', 'entryYear', 'createdAt', 'updatedAt'
+        ])
+        && isValidStudentCode(data.studentId) && data.studentId == docId
+        && isValidId(data.ownerId)
+        && data.prefix is string && data.prefix.size() <= 50
+        && data.firstName is string && data.firstName.size() >= 1 && data.firstName.size() <= 120
+        && data.lastName is string && data.lastName.size() >= 1 && data.lastName.size() <= 120
+        && (!('nickname' in data) || (data.nickname is string && data.nickname.size() <= 80))
+        && isValidLevel(data.level)
+        && data.classroom is string && data.classroom.size() >= 1 && data.classroom.size() <= 30
+        && data.entryYear is int && data.entryYear >= 2500 && data.entryYear <= 2700
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidGuardian(data, docId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'prefix', 'firstName', 'lastName',
+          'relation', 'photoUrl', 'photoFileName', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'prefix', 'firstName', 'lastName', 'relation', 'phone',
+          'photoUrl', 'photoFileName', 'photoStoragePath', 'photoAssetId', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == docId
+        && isValidId(data.ownerId)
+        && data.prefix is string && data.prefix.size() <= 50
+        && data.firstName is string && data.firstName.size() >= 1 && data.firstName.size() <= 120
+        && data.lastName is string && data.lastName.size() >= 1 && data.lastName.size() <= 120
+        && data.relation is string && data.relation.size() >= 1 && data.relation.size() <= 80
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
+        && data.photoUrl is string && data.photoUrl.size() <= 2048
+        && data.photoFileName is string && data.photoFileName.size() <= 256
+        && (!('photoStoragePath' in data) || (data.photoStoragePath is string && data.photoStoragePath.size() <= 512))
+        && (!('photoAssetId' in data) || isValidOptionalAssetId(data.photoAssetId))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPickupCard(data, docId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'studentId', 'guardianId', 'issueDate',
+          'expiryDate', 'status', 'qrCodeText', 'printCount', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'studentId', 'guardianId', 'issueDate', 'expiryDate',
+          'status', 'qrCodeText', 'printCount', 'lastPrintedAt', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == docId
+        && isValidId(data.ownerId)
+        && isValidStudentCode(data.studentId)
+        && isValidId(data.guardianId)
+        && data.issueDate is string && data.issueDate.size() >= 8 && data.issueDate.size() <= 20
+        && data.expiryDate is string && data.expiryDate.size() >= 8 && data.expiryDate.size() <= 20
+        && data.status in ['active', 'expired', 'revoked']
+        && data.qrCodeText is string && data.qrCodeText.size() >= 1 && data.qrCodeText.size() <= 300
+        && data.printCount is int && data.printCount >= 0 && data.printCount <= 100000
+        && (!('lastPrintedAt' in data) || data.lastPrintedAt == null || (data.lastPrintedAt is string && data.lastPrintedAt.size() <= 60))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPrintHistoryItem(data, docId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'timestamp', 'thaiDateString', 'studentId',
+          'studentName', 'guardianName', 'level', 'classroom',
+          'slotNumber', 'printType', 'operatorName', 'cardId', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'timestamp', 'thaiDateString', 'studentId',
+          'studentName', 'guardianName', 'level', 'classroom',
+          'slotNumber', 'printType', 'printSide', 'operatorName', 'cardId', 'createdAt'
+        ])
+        && isValidId(data.id) && data.id == docId
+        && isValidId(data.ownerId)
+        && data.timestamp is string && data.timestamp.size() <= 60
+        && data.thaiDateString is string && data.thaiDateString.size() <= 100
+        && data.studentId is string && data.studentId.size() <= 20
+        && data.studentName is string && data.studentName.size() <= 200
+        && data.guardianName is string && data.guardianName.size() <= 200
+        && isValidLevel(data.level)
+        && data.classroom is string && data.classroom.size() <= 40
+        && data.slotNumber in [1, 2]
+        && data.printType in ['บัตรใหม่', 'พิมพ์ซ้ำ (Reprint)']
+        && (!('printSide' in data) || data.printSide in ['หน้าบัตร', 'หลังบัตร'])
+        && data.operatorName is string && data.operatorName.size() <= 150
+        && isValidId(data.cardId)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidImageAsset(data, docId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'category', 'fileName', 'contentType',
+          'width', 'height', 'originalSize', 'compressedSize',
+          'storageBackend', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'category', 'fileName', 'contentType',
+          'width', 'height', 'originalSize', 'compressedSize',
+          'storageBackend', 'storageUrl', 'storagePath', 'dataUrl',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == docId
+        && isValidId(data.ownerId)
+        && data.category in ['front_bg', 'back_bg', 'guardian_photo', 'sample_photo']
+        && data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 256
+        && data.contentType in ['image/webp', 'image/jpeg', 'image/png', 'image/svg+xml']
+        && data.width is int && data.width >= 1 && data.width <= 4096
+        && data.height is int && data.height >= 1 && data.height <= 4096
+        && data.originalSize is int && data.originalSize >= 0 && data.originalSize <= 52428800
+        && data.compressedSize is int && data.compressedSize >= 0 && data.compressedSize <= 1048576
+        && data.storageBackend in ['both', 'storage', 'firestore']
+        && (!('storageUrl' in data) || (data.storageUrl is string && data.storageUrl.size() <= 2048))
+        && (!('storagePath' in data) || (data.storagePath is string && data.storagePath.size() <= 512))
+        && (!('dataUrl' in data) || (data.dataUrl is string && data.dataUrl.size() <= 800000 && (data.dataUrl == '' || data.dataUrl.matches('^data:image/.*'))))
+        && (('dataUrl' in data && data.dataUrl.size() > 0) || ('storageUrl' in data && data.storageUrl.size() > 0))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- COLLECTION RULES ---
+
+    // Admins Collection (Trusted Role Lookup)
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isAuthorizedAuth() && (request.auth.uid == adminId || isAdmin());
+      allow list: if false;
+      allow create: if isValidId(adminId) && isBootstrappedAdmin()
+        && isValidAdminDoc(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(adminId) && isBootstrappedAdmin()
+        && isValidAdminDoc(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'role', 'updatedAt']);
+      allow delete: if isValidId(adminId) && isBootstrappedAdmin();
+    }
+
+    // Operator Accounts Directory (User & Password mapping, zero password storage)
+    match /operator_accounts/{accountId} {
+      allow get: if isValidId(accountId) && isAuthorizedAuth() && (
+        isAdmin() ||
+        (resource == null && accountId == request.auth.uid) ||
+        (resource != null && (existing().ownerId == request.auth.uid || existing().uid == request.auth.uid))
+      );
+      allow list: if isAuthorizedAuth() && (isBootstrappedAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isValidId(accountId) && isAuthorizedAuth()
+        && isValidOperatorAccount(incoming(), accountId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(accountId) && isAuthorizedAuth()
+        && isValidOperatorAccount(incoming(), accountId)
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || existing().ownerId == request.auth.uid)
+        && (
+          isAdmin()
+          || incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'position', 'isActive', 'updatedAt'])
+        );
+      allow delete: if isValidId(accountId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
+    }
+
+    // System Settings (Academic Year, PVC Tray Calibration, Sample Photo Reference)
+    match /system_settings/{settingId} {
+      allow get: if isValidId(settingId) && isAuthorizedAuth() && (
+        isAdmin() ||
+        (resource == null && settingId == request.auth.uid) ||
+        (resource != null && existing().ownerId == request.auth.uid)
+      );
+      allow list: if isAuthorizedAuth() && (isBootstrappedAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isValidId(settingId) && isAuthorizedAuth()
+        && isValidSystemSettings(incoming())
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(settingId) && isAuthorizedAuth()
+        && isValidSystemSettings(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || existing().ownerId == request.auth.uid)
+        && (
+          isAdmin()
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['academicYear', 'updatedAt']))
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['trayConfig', 'updatedAt']))
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['designerSamplePhotoUrl', 'designerSamplePhotoPath', 'designerSamplePhotoAssetId', 'updatedAt']))
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['academicYear', 'trayConfig', 'designerSamplePhotoUrl', 'designerSamplePhotoPath', 'designerSamplePhotoAssetId', 'updatedAt']))
+        );
+      allow delete: if isValidId(settingId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
+    }
+
+    // Front Card Design Templates
+    match /front_designs/{designId} {
+      allow get: if isValidId(designId) && isAuthorizedAuth() && (isAdmin() || (resource != null && existing().ownerId == request.auth.uid));
+      allow list: if isAuthorizedAuth() && (isBootstrappedAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isValidId(designId) && isAuthorizedAuth()
+        && isValidFrontCardDesign(incoming(), designId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(designId) && isAuthorizedAuth()
+        && isValidFrontCardDesign(incoming(), designId)
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || existing().ownerId == request.auth.uid)
+        && (
+          isAdmin()
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['isDefault', 'updatedAt']))
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'isDefault', 'level', 'title', 'subtitle', 'bgImageUrl', 'bgImageStoragePath', 'bgImageAssetId', 'bgType', 'bgLayerAbovePhoto', 'elements', 'updatedAt']))
+        );
+      allow delete: if isValidId(designId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
+    }
+
+    // Back Card Design Templates
+    match /back_designs/{designId} {
+      allow get: if isValidId(designId) && isAuthorizedAuth() && (isAdmin() || (resource != null && existing().ownerId == request.auth.uid));
+      allow list: if isAuthorizedAuth() && (isBootstrappedAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isValidId(designId) && isAuthorizedAuth()
+        && isValidBackCardDesign(incoming(), designId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(designId) && isAuthorizedAuth()
+        && isValidBackCardDesign(incoming(), designId)
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || existing().ownerId == request.auth.uid)
+        && (
+          isAdmin()
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['isDefault', 'updatedAt']))
+          || (incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'isDefault', 'displayMode', 'title', 'subtitle', 'rules',
+            'emergencyLabel', 'emergencyPhone', 'footerNote', 'accentColor',
+            'textColor', 'bgColor', 'bgImageUrl', 'bgImageStoragePath', 'bgImageAssetId',
+            'showLogo', 'showSignatureBox', 'signatureLabel', 'updatedAt'
+          ]))
+        );
+      allow delete: if isValidId(designId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
+    }
+
+    // Students Directory (keyed by 5-digit studentId)
+    match /students/{studentId} {
+      allow get: if isValidStudentCode(studentId) && isAuthorizedAuth() && (isAdmin() || (resource != null && existing().ownerId == request.auth.uid));
+      allow list: if isAuthorizedAuth() && (isBootstrappedAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isValidStudentCode(studentId) && isAuthorizedAuth()
+        && isValidStudent(incoming(), studentId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidStudentCode(studentId) && isAuthorizedAuth()
+        && isValidStudent(incoming(), studentId)
+        && incoming().studentId == existing().studentId
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || existing().ownerId == request.auth.uid)
+        && (
+          isAdmin()
+          || incoming().diff(existing()).affectedKeys().hasOnly(['prefix', 'firstName', 'lastName', 'nickname', 'level', 'classroom', 'entryYear', 'updatedAt'])
+        );
+      allow delete: if isValidStudentCode(studentId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
+    }
+
+    // Guardians (Contains PII: phone, name, photo)
+    match /guardians/{guardianId} {
+      allow get: if isValidId(guardianId) && isAuthorizedAuth() && (isAdmin() || (resource != null && existing().ownerId == request.auth.uid));
+      allow list: if isAuthorizedAuth() && (isBootstrappedAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isValidId(guardianId) && isAuthorizedAuth()
+        && isValidGuardian(incoming(), guardianId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(guardianId) && isAuthorizedAuth()
+        && isValidGuardian(incoming(), guardianId)
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || existing().ownerId == request.auth.uid)
+        && (
+          isAdmin()
+          || incoming().diff(existing()).affectedKeys().hasOnly(['prefix', 'firstName', 'lastName', 'relation', 'phone', 'photoUrl', 'photoFileName', 'photoStoragePath', 'photoAssetId', 'updatedAt'])
+        );
+      allow delete: if isValidId(guardianId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
+    }
+
+    // Issued Pickup Cards (Relational consistency + Terminal state lock on revoked)
+    match /cards/{cardId} {
+      allow get: if isValidId(cardId) && isAuthorizedAuth() && (isAdmin() || (resource != null && existing().ownerId == request.auth.uid));
+      allow list: if isAuthorizedAuth() && (isBootstrappedAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isValidId(cardId) && isAuthorizedAuth()
+        && isValidPickupCard(incoming(), cardId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/students/$(incoming().studentId))
+        && exists(/databases/$(database)/documents/guardians/$(incoming().guardianId));
+      allow update: if isValidId(cardId) && isAuthorizedAuth()
+        && isValidPickupCard(incoming(), cardId)
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().studentId == existing().studentId
+        && incoming().guardianId == existing().guardianId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || (existing().ownerId == request.auth.uid && existing().status != 'revoked'))
+        && (
+          isAdmin()
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['printCount', 'lastPrintedAt', 'updatedAt']))
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['issueDate', 'expiryDate', 'qrCodeText', 'updatedAt']))
+        );
+      allow delete: if isValidId(cardId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
+    }
+
+    // Print History (Immutable Audit Trail except admin/owner delete)
+    match /print_history/{historyId} {
+      allow get: if isValidId(historyId) && isAuthorizedAuth() && (isAdmin() || (resource != null && existing().ownerId == request.auth.uid));
+      allow list: if isAuthorizedAuth() && (isBootstrappedAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isValidId(historyId) && isAuthorizedAuth()
+        && isValidPrintHistoryItem(incoming(), historyId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(historyId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
+    }
+
+    // Compressed Image Assets Library (Stored in Firestore for unified DB storage & reuse)
+    match /image_assets/{assetId} {
+      allow get: if isValidId(assetId) && isAuthorizedAuth() && (isAdmin() || (resource != null && existing().ownerId == request.auth.uid));
+      allow list: if isAuthorizedAuth() && (isBootstrappedAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isValidId(assetId) && isAuthorizedAuth()
+        && isValidImageAsset(incoming(), assetId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(assetId) && isAuthorizedAuth()
+        && isValidImageAsset(incoming(), assetId)
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || existing().ownerId == request.auth.uid)
+        && (
+          isAdmin()
+          || incoming().diff(existing()).affectedKeys().hasOnly([
+            'fileName', 'category', 'storageBackend', 'storageUrl', 'storagePath',
+            'dataUrl', 'compressedSize', 'width', 'height', 'updatedAt'
+          ])
+        );
+      allow delete: if isValidId(assetId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "ระบบพิมพ์บัตรรับส่งนักเรียน (Student Pickup Card & PVC Printing System)",
+  "description": "ระบบจัดการและพิมพ์บัตรรับส่งนักเรียนลงบัตร Inkjet PVC Card (CR80) พร้อมตัวออกแบบบัตร ม.ต้น/ม.ปลาย พิมพ์ 2 บัตรต่อถาด Epson และจัดการข้อมูลนักเรียน-ผู้ปกครอง",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

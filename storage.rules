@@ -1,0 +1,30 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAuthorizedUser() {
+      return request.auth != null && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.firebase.sign_in_provider == 'password'
+      );
+    }
+
+    function isBootstrappedAdmin() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == 'tasawan_app02@pcccr.ac.th';
+    }
+
+    match /card_designs/{uid}/{allPaths=**} {
+      allow read, write: if isAuthorizedUser() && (request.auth.uid == uid || isBootstrappedAdmin());
+    }
+
+    match /guardians/{uid}/{allPaths=**} {
+      allow read, write: if isAuthorizedUser() && (request.auth.uid == uid || isBootstrappedAdmin());
+    }
+
+    match /system_settings/{uid}/{allPaths=**} {
+      allow read, write: if isAuthorizedUser() && (request.auth.uid == uid || isBootstrappedAdmin());
+    }
+  }
+}
