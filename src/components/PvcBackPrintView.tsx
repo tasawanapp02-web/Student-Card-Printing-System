@@ -857,9 +857,6 @@ export const PvcBackPrintView: React.FC<PvcBackPrintViewProps> = ({
               >
                 {/* Tray Header Notch */}
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-2.5 bg-slate-900 rounded-b-lg border-x border-b border-slate-700" />
-                <div className="absolute top-3.5 left-1/2 -translate-x-1/2 text-[9px] text-slate-500 font-mono tracking-wider uppercase whitespace-nowrap">
-                  EPSON PVC CARD TRAY
-                </div>
 
                 {/* Slot 1 Guide Cutout */}
                 <div

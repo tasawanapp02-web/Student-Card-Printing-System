@@ -598,11 +598,6 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                   transformOrigin: 'center center',
                 }}
               >
-                {/* Top Tray Label */}
-                <div className="absolute top-2.5 left-1/2 -translate-x-1/2 text-[9px] text-slate-500 font-mono tracking-wider uppercase whitespace-nowrap">
-                  EPSON PVC CARD TRAY
-                </div>
-
                 {/* Slot 1 Guide Cutout */}
                 <div
                   className={`absolute transition-all rounded-[5px] ${
