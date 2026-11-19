@@ -280,4 +280,23 @@ export const DIRTY_DOZEN_TEST_VECTORS: DirtyDozenCase[] = [
     },
     expectedResult: 'PERMISSION_DENIED',
   },
+  {
+    id: 14,
+    name: 'Oversized Title & Shadow Field on PrintHeaderPreset',
+    collection: 'print_headers',
+    docId: 'hdr_poison_1',
+    operation: 'create',
+    auth: {
+      uid: 'user_a',
+      email: 'user_a@example.com',
+      emailVerified: true,
+    },
+    payload: {
+      id: 'hdr_poison_1',
+      ownerId: 'user_a',
+      title: 'H'.repeat(500),
+      extraGhost: true,
+    },
+    expectedResult: 'PERMISSION_DENIED',
+  },
 ];

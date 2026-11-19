@@ -16,6 +16,7 @@ import {
   ImageAssetReference,
   FirestoreUsageSummary,
   FirestoreUsageBreakdownItem,
+  PrintHeaderPreset,
 } from '../types';
 import {
   DEFAULT_TRAY_CONFIG,
@@ -96,6 +97,7 @@ const STORAGE_KEYS = {
   OPERATOR_ACCOUNTS: 'spc_operator_accounts_v1',
   REMEMBERED_USERNAME: 'spc_remembered_username_v1',
   CLEAN_PURGE_FLAG: 'spc_purge_mock_and_users_v2',
+  PRINT_HEADERS: 'spc_print_headers_v1',
 };
 
 const IDB_NAME = 'spc_app_db_v1';
@@ -189,10 +191,12 @@ class StorageService {
   private knownHistoryIds = new Set<string>();
   private knownOperatorIds = new Set<string>();
   private knownImageAssetIds = new Set<string>();
+  private knownPrintHeaderIds = new Set<string>();
 
-  // Direct Firestore-backed operator accounts & image library state
+  // Direct Firestore-backed operator accounts, image library, & print header state
   private cloudOperatorAccounts: OperatorAccount[] = [];
   private cloudImageAssets: ImageAsset[] = [];
+  private cloudPrintHeaders: PrintHeaderPreset[] = [];
   private currentOperatorProfile: OperatorAccount | null = null;
   private adminSeedPromise: Promise<void> | null = null;
   private storageAvailability: 'unknown' | 'available' | 'unavailable' = 'unknown';
@@ -527,8 +531,10 @@ class StorageService {
     this.knownHistoryIds.clear();
     this.knownOperatorIds.clear();
     this.knownImageAssetIds.clear();
+    this.knownPrintHeaderIds.clear();
     this.cloudOperatorAccounts = [];
     this.cloudImageAssets = [];
+    this.cloudPrintHeaders = [];
     this.currentOperatorProfile = null;
     this.adminSeedPromise = null;
     this.removeItem(STORAGE_KEYS.OPERATOR_ACCOUNTS);
@@ -541,6 +547,7 @@ class StorageService {
       this.removeItem(STORAGE_KEYS.FRONT_DESIGNS);
       this.removeItem(STORAGE_KEYS.BACK_DESIGNS);
       this.removeItem(STORAGE_KEYS.IMAGE_ASSETS);
+      this.removeItem(STORAGE_KEYS.PRINT_HEADERS);
       this.removeItem(STORAGE_KEYS.TRAY_CONFIG);
       this.removeItem(STORAGE_KEYS.ACADEMIC_YEAR);
       this.removeItem(STORAGE_KEYS.DESIGNER_SAMPLE_PHOTO);
@@ -584,6 +591,7 @@ class StorageService {
       operators: false,
       selfOperator: false,
       imageAssets: false,
+      printHeaders: false,
     };
 
     let resolveInitial!: () => void;
@@ -611,7 +619,8 @@ class StorageService {
         waitFlags.history &&
         waitFlags.operators &&
         waitFlags.selfOperator &&
-        waitFlags.imageAssets
+        waitFlags.imageAssets &&
+        waitFlags.printHeaders
       ) {
         if (!this.isCloudSynced) {
           this.isCloudSynced = true;
@@ -939,6 +948,44 @@ class StorageService {
       )
     );
 
+    // 11. Saved Custom A4 Print Headers listener
+    this.unsubscribers.push(
+      onSnapshot(
+        buildQuery('print_headers'),
+        (snap) => {
+          this.knownPrintHeaderIds.clear();
+          const list: PrintHeaderPreset[] = [];
+          snap.forEach((docSnap) => {
+            this.knownPrintHeaderIds.add(docSnap.id);
+            const raw = docSnap.data() as Record<string, unknown>;
+            list.push({
+              id: docSnap.id,
+              ownerId: typeof raw.ownerId === 'string' ? raw.ownerId : undefined,
+              title: typeof raw.title === 'string' ? raw.title : '',
+              subtitle: typeof raw.subtitle === 'string' ? raw.subtitle : '',
+              isDefault: Boolean(raw.isDefault),
+              createdAt: tsToIso(raw.createdAt),
+              updatedAt: tsToIso(raw.updatedAt),
+            });
+          });
+          list.sort((a, b) => {
+            if (Boolean(a.isDefault) !== Boolean(b.isDefault)) {
+              return a.isDefault ? -1 : 1;
+            }
+            return b.updatedAt.localeCompare(a.updatedAt);
+          });
+          this.cloudPrintHeaders = list;
+          this.setItem(STORAGE_KEYS.PRINT_HEADERS, JSON.stringify(list));
+          waitFlags.printHeaders = true;
+          maybeFinishInitial();
+          if (this.isCloudSynced) this.notifyListeners();
+        },
+        (error) => {
+          handleSyncError(error, OperationType.LIST, 'print_headers');
+        }
+      )
+    );
+
     return this.initialSyncPromise;
   }
 
@@ -1092,6 +1139,15 @@ class StorageService {
       const localHistory = this.getPrintHistory();
       for (const item of localHistory) {
         await this.persistPrintHistoryDoc(item, uid);
+      }
+    }
+
+    if (this.knownPrintHeaderIds.size === 0) {
+      const localHeaders = this.getPrintHeaders();
+      for (const preset of localHeaders) {
+        if (preset.title && preset.title.trim()) {
+          await this.persistPrintHeaderDoc(preset, uid);
+        }
       }
     }
   }
@@ -1451,6 +1507,54 @@ class StorageService {
     }
   }
 
+  private async persistPrintHeaderDoc(preset: PrintHeaderPreset, uid: string): Promise<void> {
+    const docId = sanitizeId(preset.id, 'hdr');
+    const docRef = doc(db, 'print_headers', docId);
+    const path = `print_headers/${docId}`;
+
+    const cleanTitle = truncateStr((preset.title || '').trim(), 300);
+    if (!cleanTitle) {
+      throw new Error('กรุณาระบุข้อความหัวกระดาษ');
+    }
+    const cleanSubtitle = truncateStr((preset.subtitle || '').trim(), 300);
+    const cleanDefault = Boolean(preset.isDefault);
+
+    try {
+      if (this.knownPrintHeaderIds.has(docId)) {
+        await updateDoc(docRef, {
+          title: cleanTitle,
+          subtitle: cleanSubtitle,
+          isDefault: cleanDefault,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await setDoc(docRef, {
+          id: docId,
+          ownerId: uid,
+          title: cleanTitle,
+          subtitle: cleanSubtitle,
+          isDefault: cleanDefault,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        this.knownPrintHeaderIds.add(docId);
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, path);
+    }
+  }
+
+  private async deletePrintHeaderDoc(headerId: string): Promise<void> {
+    const docId = sanitizeId(headerId, 'hdr');
+    const path = `print_headers/${docId}`;
+    try {
+      await deleteDoc(doc(db, 'print_headers', docId));
+      this.knownPrintHeaderIds.delete(docId);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
+    }
+  }
+
   private async persistOperatorAccountDoc(account: OperatorAccount, uid: string): Promise<void> {
     const docId = sanitizeId(account.id || account.uid, 'op');
     const docRef = doc(db, 'operator_accounts', docId);
@@ -1729,6 +1833,7 @@ class StorageService {
     const frontDesigns = this.getFrontDesigns();
     const backDesigns = this.getBackDesigns();
     const printHistory = this.getPrintHistory();
+    const printHeaders = this.getPrintHeaders();
     const operators = this.getOperatorAccounts();
 
     const studentsBytes = measureDocs(students);
@@ -1737,6 +1842,7 @@ class StorageService {
     const frontDesignsBytes = measureDocs(frontDesigns);
     const backDesignsBytes = measureDocs(backDesigns);
     const printHistoryBytes = measureDocs(printHistory);
+    const printHeadersBytes = measureDocs(printHeaders);
     const operatorsBytes = measureDocs(operators);
 
     const settingsPayload = {
@@ -1781,9 +1887,9 @@ class StorageService {
       },
       {
         key: 'history_and_settings',
-        label: 'ประวัติพิมพ์และตั้งค่าระบบ',
-        count: printHistory.length + operators.length + 1,
-        bytes: printHistoryBytes + operatorsBytes + settingsBytes,
+        label: 'ประวัติพิมพ์ หัวกระดาษ และตั้งค่าระบบ',
+        count: printHistory.length + printHeaders.length + operators.length + 1,
+        bytes: printHistoryBytes + printHeadersBytes + operatorsBytes + settingsBytes,
       },
     ];
 
@@ -1799,6 +1905,7 @@ class StorageService {
       frontDesigns.length +
       backDesigns.length +
       printHistory.length +
+      printHeaders.length +
       operators.length +
       1;
 
@@ -2711,6 +2818,124 @@ class StorageService {
       }
     }
     return null;
+  }
+
+  // --- CUSTOM A4 PRINT HEADER PRESETS ---
+  public getPrintHeaders(): PrintHeaderPreset[] {
+    if (this.cloudPrintHeaders.length > 0) {
+      return [...this.cloudPrintHeaders];
+    }
+    const saved = this.getItem(STORAGE_KEYS.PRINT_HEADERS);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return [...parsed].sort((a: PrintHeaderPreset, b: PrintHeaderPreset) => {
+            if (Boolean(a.isDefault) !== Boolean(b.isDefault)) {
+              return a.isDefault ? -1 : 1;
+            }
+            return (b.updatedAt || '').localeCompare(a.updatedAt || '');
+          });
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return [];
+  }
+
+  public async savePrintHeader(input: {
+    id?: string;
+    title: string;
+    subtitle?: string;
+    isDefault?: boolean;
+  }): Promise<PrintHeaderPreset> {
+    const cleanTitle = truncateStr((input.title || '').trim(), 300);
+    if (!cleanTitle) {
+      throw new Error('กรุณากรอกข้อความหัวกระดาษ');
+    }
+    const cleanSubtitle = truncateStr((input.subtitle || '').trim(), 300);
+    const now = new Date().toISOString();
+    const list = this.getPrintHeaders();
+    const targetId = input.id
+      ? sanitizeId(input.id, 'hdr')
+      : `hdr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const existing = list.find((h) => h.id === targetId);
+    const nextIsDefault = input.isDefault !== undefined ? Boolean(input.isDefault) : Boolean(existing?.isDefault);
+
+    const record: PrintHeaderPreset = {
+      id: targetId,
+      ownerId: existing?.ownerId || this.getCurrentUid() || undefined,
+      title: cleanTitle,
+      subtitle: cleanSubtitle,
+      isDefault: nextIsDefault,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+
+    const updatedList = existing
+      ? list.map((h) => {
+          if (h.id === targetId) return record;
+          if (nextIsDefault && h.isDefault) return { ...h, isDefault: false, updatedAt: now };
+          return h;
+        })
+      : [
+          ...(nextIsDefault
+            ? list.map((h) => (h.isDefault ? { ...h, isDefault: false, updatedAt: now } : h))
+            : list),
+          record,
+        ];
+
+    updatedList.sort((a, b) => {
+      if (Boolean(a.isDefault) !== Boolean(b.isDefault)) {
+        return a.isDefault ? -1 : 1;
+      }
+      return (b.updatedAt || '').localeCompare(a.updatedAt || '');
+    });
+
+    this.cloudPrintHeaders = updatedList;
+    this.setItem(STORAGE_KEYS.PRINT_HEADERS, JSON.stringify(updatedList));
+
+    const uid = this.getCurrentUid();
+    if (uid) {
+      if (nextIsDefault) {
+        for (const item of list) {
+          if (item.id !== targetId && item.isDefault) {
+            await this.persistPrintHeaderDoc({ ...item, isDefault: false, updatedAt: now }, uid);
+          }
+        }
+      }
+      await this.persistPrintHeaderDoc(record, uid);
+    }
+
+    this.notifyListeners();
+    return record;
+  }
+
+  public async setDefaultPrintHeader(headerId: string): Promise<void> {
+    const docId = sanitizeId(headerId, 'hdr');
+    const list = this.getPrintHeaders();
+    const target = list.find((h) => h.id === docId);
+    if (!target) return;
+    await this.savePrintHeader({
+      id: target.id,
+      title: target.title,
+      subtitle: target.subtitle,
+      isDefault: true,
+    });
+  }
+
+  public async deletePrintHeader(headerId: string): Promise<void> {
+    const docId = sanitizeId(headerId, 'hdr');
+    const remaining = this.getPrintHeaders().filter((h) => h.id !== docId);
+    this.cloudPrintHeaders = remaining;
+    this.setItem(STORAGE_KEYS.PRINT_HEADERS, JSON.stringify(remaining));
+
+    const uid = this.getCurrentUid();
+    if (uid) {
+      await this.deletePrintHeaderDoc(docId);
+    }
+    this.notifyListeners();
   }
 
   // --- USERS, PASSWORDS & FIREBASE AUTO-PERMISSION ---
@@ -3705,6 +3930,11 @@ class StorageService {
     for (const h of this.getPrintHistory()) {
       await this.persistPrintHistoryDoc(h, uid);
     }
+    for (const hdr of this.getPrintHeaders()) {
+      if (hdr.title && hdr.title.trim()) {
+        await this.persistPrintHeaderDoc(hdr, uid);
+      }
+    }
     for (const asset of this.getImageAssets()) {
       if (!this.knownImageAssetIds.has(asset.id)) {
         await this.persistImageAssetDoc(asset, uid);
@@ -3747,8 +3977,11 @@ class StorageService {
     this.removeItem(STORAGE_KEYS.DESIGNER_SAMPLE_PHOTO_PATH);
     this.removeItem(STORAGE_KEYS.DESIGNER_SAMPLE_PHOTO_ASSET_ID);
     this.removeItem(STORAGE_KEYS.IMAGE_ASSETS);
+    this.removeItem(STORAGE_KEYS.PRINT_HEADERS);
     this.cloudImageAssets = [];
+    this.cloudPrintHeaders = [];
     this.knownImageAssetIds.clear();
+    this.knownPrintHeaderIds.clear();
 
     const activeUid = this.getCurrentUid();
     const isAdminUser = this.isUserBootstrappedAdmin(this.activeUser || auth.currentUser);
@@ -3781,7 +4014,7 @@ class StorageService {
     if (uid) {
       // Ensure any extra Firestore docs not in cache are also removed cleanly
       try {
-        const colsToClear = ['cards', 'guardians', 'students', 'print_history', 'image_assets'];
+        const colsToClear = ['cards', 'guardians', 'students', 'print_history', 'image_assets', 'print_headers'];
         for (const colName of colsToClear) {
           const q = isAdminUser
             ? collection(db, colName)

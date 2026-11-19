@@ -12,6 +12,7 @@ import {
 import { ThaiDatePicker } from './ThaiDatePicker';
 import { CardPreview } from './CardPreview';
 import { FirebaseImagePickerModal } from './FirebaseImagePickerModal';
+import { GUARDIAN_RELATION_ORDER } from '../utils/relations';
 import {
   UserCheck,
   CreditCard,
@@ -1643,12 +1644,15 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                     onChange={(e) => setGuardianForm({ ...guardianForm, relation: e.target.value })}
                     className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-sarabun"
                   >
-                    <option value="บิดา">บิดา</option>
-                    <option value="มารดา">มารดา</option>
-                    <option value="ผู้ปกครอง">ผู้ปกครอง</option>
-                    <option value="ปู่ / ย่า">ปู่ / ย่า</option>
-                    <option value="ตา / ยาย">ตา / ยาย</option>
-                    <option value="ลุง / ป้า / น้า / อา">ลุง / ป้า / น้า / อา</option>
+                    {GUARDIAN_RELATION_ORDER.map((rel) => (
+                      <option key={rel} value={rel}>
+                        {rel}
+                      </option>
+                    ))}
+                    {!(GUARDIAN_RELATION_ORDER as readonly string[]).includes(guardianForm.relation) &&
+                      guardianForm.relation && (
+                        <option value={guardianForm.relation}>{guardianForm.relation}</option>
+                      )}
                   </select>
                 </div>
                 <div>

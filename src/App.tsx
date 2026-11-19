@@ -10,6 +10,7 @@ import { PvcBackPrintView } from './components/PvcBackPrintView';
 import { GuardianPhotoPrintView } from './components/GuardianPhotoPrintView';
 import { PrintPreviewTab } from './components/PrintPreviewTab';
 import { GuardiansView } from './components/GuardiansView';
+import { GuardianCardRegistryView } from './components/GuardianCardRegistryView';
 import { StudentsView } from './components/StudentsView';
 import { CardDesigner } from './components/CardDesigner';
 import { TemplateManagementView } from './components/TemplateManagementView';
@@ -83,7 +84,7 @@ export default function App() {
   const isPrintPreviewMode = (() => {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('printPreview');
-    return mode === 'front' || mode === 'back' || mode === 'photo';
+    return mode === 'front' || mode === 'back' || mode === 'photo' || mode === 'registry';
   })();
 
   if (isPrintPreviewMode) {
@@ -226,7 +227,7 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
           />
 
           {/* Main Workspace Body */}
-          <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+          <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 print:p-0 print:m-0 print:max-w-none print:w-full">
             {activeTab === 'pvcPrint' && (
               <PvcPrintView
                 currentUser={currentUser}
@@ -249,6 +250,13 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
 
             {activeTab === 'cards' && (
               <GuardiansView
+                onNotify={showToast}
+                onSendCardToPrintTray={handleSendCardToPrintTray}
+              />
+            )}
+
+            {activeTab === 'cardRegistry' && (
+              <GuardianCardRegistryView
                 onNotify={showToast}
                 onSendCardToPrintTray={handleSendCardToPrintTray}
               />

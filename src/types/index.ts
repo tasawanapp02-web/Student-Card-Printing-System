@@ -270,10 +270,32 @@ export interface FirestoreUsageSummary {
   breakdown: FirestoreUsageBreakdownItem[];
 }
 
+export interface PrintHeaderPreset {
+  id: string;
+  ownerId?: string;
+  title: string;
+  subtitle?: string;
+  isDefault?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RegistryPrintConfigPayload {
+  studentId: string;
+  paperOrientation: 'portrait' | 'landscape';
+  columnsPerRow: 1 | 2;
+  repeatHeader: boolean;
+  showPageNumbers: boolean;
+  headerTitle: string;
+  headerSubtitle: string;
+  reportDate: string; // YYYY-MM-DD
+  frontDesignId?: string;
+}
+
 export interface PrintPreviewPayload {
   id: string;
   createdAt: string;
-  side: 'front' | 'back' | 'photo';
+  side: 'front' | 'back' | 'photo' | 'registry';
   trayConfig: TrayCalibrationConfig;
   enableSlot1: boolean;
   enableSlot2: boolean;
@@ -287,6 +309,7 @@ export interface PrintPreviewPayload {
   backSlot1Rotate180?: boolean;
   backSlot2Rotate180?: boolean;
   photoPrintConfig?: PhotoPrintConfigPayload;
+  registryPrintConfig?: RegistryPrintConfigPayload;
   operatorName: string;
 }
 

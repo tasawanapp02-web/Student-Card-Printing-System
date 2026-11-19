@@ -16,10 +16,12 @@ import {
   Check,
   Palette,
   Image as ImageIcon,
+  FileText,
 } from 'lucide-react';
 
 export type MainTabType =
   | 'cards'
+  | 'cardRegistry'
   | 'students'
   | 'designer'
   | 'templates'
@@ -140,6 +142,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           icon: CreditCard,
         },
         {
+          id: 'cardRegistry',
+          label: 'ทะเบียนบัตรผู้ปกครอง',
+          description: 'ค้นหานักเรียน ดูบัตรเรียงความสัมพันธ์ และพิมพ์ A4',
+          icon: FileText,
+        },
+        {
           id: 'students',
           label: 'ข้อมูลนักเรียน',
           description: 'รายชื่อนักเรียน ระดับชั้น และห้องเรียน',
@@ -174,6 +182,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     photoPrint: 'พิมพ์รูปผู้ปกครอง',
     history: 'ประวัติและพิมพ์ซ้ำ',
     cards: 'บัตรรับส่งและผู้ปกครอง',
+    cardRegistry: 'ทะเบียนบัตรผู้ปกครอง',
     students: 'ข้อมูลนักเรียน',
     designer: 'ออกแบบบัตร (Card Designer)',
     templates: 'จัดการแม่แบบหน้า-หลังบัตร',

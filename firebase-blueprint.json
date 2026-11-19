@@ -637,6 +637,50 @@
         }
       },
       "required": ["id", "ownerId", "category", "fileName", "contentType", "width", "height", "originalSize", "compressedSize", "storageBackend", "createdAt", "updatedAt"]
+    },
+    "PrintHeaderPreset": {
+      "title": "PrintHeaderPreset",
+      "description": "Saved custom A4 print header presets for guardian card registry reports.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Print header preset document ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the creator.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Main custom header text.",
+          "maxLength": 300
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "Optional subtitle or organization line.",
+          "maxLength": 300
+        },
+        "isDefault": {
+          "type": "boolean",
+          "description": "Whether this header preset is selected by default before printing."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last update timestamp."
+        }
+      },
+      "required": ["id", "ownerId", "title", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -675,6 +719,10 @@
     "/image_assets/{assetId}": {
       "schema": { "$ref": "#/entities/ImageAsset" },
       "description": "Compressed card background, guardian portrait, and sample images persisted in Firestore for unified Firebase storage and instant reuse."
+    },
+    "/print_headers/{headerId}": {
+      "schema": { "$ref": "#/entities/PrintHeaderPreset" },
+      "description": "Saved custom A4 report header presets for guardian pickup card registry printing."
     }
   }
 }

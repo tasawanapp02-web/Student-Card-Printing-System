@@ -3,7 +3,7 @@
 ## 1. Data Invariants
 1. **Identity & Auth Provider Verification**: Every read, list, create, update, and delete operation requires `request.auth != null` AND either `request.auth.token.email_verified == true` (e.g., Google Sign-In) OR `request.auth.token.firebase.sign_in_provider == 'password'` (Firebase Email/Password Auth). Unauthenticated clients and unverified non-password tokens receive `PERMISSION_DENIED`. Bootstrapped admin privilege (`tasawan_app02@pcccr.ac.th`) ALWAYS strictly requires `request.auth.token.email_verified == true` to prevent email spoofing.
 2. **Ownership & RBAC Isolation**:
-   - Every document in `system_settings`, `front_designs`, `back_designs`, `students`, `guardians`, `cards`, `print_history`, `operator_accounts`, and `image_assets` MUST store `ownerId == request.auth.uid` on creation.
+   - Every document in `system_settings`, `front_designs`, `back_designs`, `students`, `guardians`, `cards`, `print_history`, `operator_accounts`, `image_assets`, and `print_headers` MUST store `ownerId == request.auth.uid` on creation.
    - `ownerId` and `createdAt` are **immortal/immutable** after creation.
    - Only the document owner (`resource.data.ownerId == request.auth.uid`) or a verified admin (`admins/{uid}` or verified bootstrapped email `tasawan_app02@pcccr.ac.th`) may read, update, or delete records.
    - Non-bootstrapped users cannot read or list another user's PII (`guardians.phone`, `students`, `cards`, `print_history`, `operator_accounts`) or uploaded `image_assets`.

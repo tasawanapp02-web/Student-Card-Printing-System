@@ -330,6 +330,22 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidPrintHeaderPreset(data, docId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'title', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'title', 'subtitle', 'isDefault', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == docId
+        && isValidId(data.ownerId)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 300
+        && (!('subtitle' in data) || (data.subtitle is string && data.subtitle.size() <= 300))
+        && (!('isDefault' in data) || data.isDefault is bool)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // --- COLLECTION RULES ---
 
     // Admins Collection (Trusted Role Lookup)
@@ -569,6 +585,29 @@ service cloud.firestore {
           ])
         );
       allow delete: if isValidId(assetId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
+    }
+
+    // Saved A4 Custom Print Headers
+    match /print_headers/{headerId} {
+      allow get: if isValidId(headerId) && isAuthorizedAuth() && (isAdmin() || (resource != null && existing().ownerId == request.auth.uid));
+      allow list: if isAuthorizedAuth() && (isBootstrappedAdmin() || resource.data.ownerId == request.auth.uid);
+      allow create: if isValidId(headerId) && isAuthorizedAuth()
+        && isValidPrintHeaderPreset(incoming(), headerId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(headerId) && isAuthorizedAuth()
+        && isValidPrintHeaderPreset(incoming(), headerId)
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isAdmin() || existing().ownerId == request.auth.uid)
+        && (
+          isAdmin()
+          || incoming().diff(existing()).affectedKeys().hasOnly(['title', 'subtitle', 'isDefault', 'updatedAt'])
+        );
+      allow delete: if isValidId(headerId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
     }
   }
 }
