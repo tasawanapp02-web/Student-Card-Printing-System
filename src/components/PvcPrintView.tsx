@@ -8,6 +8,7 @@ import {
   PrintPreviewPayload,
 } from '../types';
 import { storageService } from '../utils/storage';
+import { formatStudentGradeRoom, getCurrentBuddhistYear } from '../utils/thaiDate';
 import { CardPreview } from './CardPreview';
 import { TrayCalibrationPanel } from './TrayCalibrationPanel';
 import { openPrintPreviewInNewTab } from '../utils/printPreview';
@@ -38,6 +39,9 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
   reprintCardId,
   onReprintLoaded,
 }) => {
+  const [currentAcademicYear, setCurrentAcademicYear] = useState<number>(() =>
+    storageService.getAcademicYear() || getCurrentBuddhistYear()
+  );
   const [trayConfig, setTrayConfig] = useState<TrayCalibrationConfig>(() =>
     storageService.getTrayConfig()
   );
@@ -48,6 +52,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
 
   useEffect(() => {
     return storageService.subscribe(() => {
+      setCurrentAcademicYear(storageService.getAcademicYear() || getCurrentBuddhistYear());
       setTrayConfig(storageService.getTrayConfig());
       setStudents(storageService.getStudents());
       setGuardians(storageService.getGuardians());
@@ -199,6 +204,8 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
       s?.firstName.toLowerCase().includes(q) ||
       s?.lastName.toLowerCase().includes(q) ||
       s?.nickname.toLowerCase().includes(q) ||
+      s?.classroom.toLowerCase().includes(q) ||
+      (s ? formatStudentGradeRoom(s, currentAcademicYear).toLowerCase().includes(q) : false) ||
       g?.firstName.toLowerCase().includes(q) ||
       g?.lastName.toLowerCase().includes(q)
     );
@@ -333,7 +340,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                         รหัส {student1.studentId}
                       </span>
                       <span className="text-slate-400 font-sarabun text-[11px]">
-                        ม.{student1.classroom}
+                        {formatStudentGradeRoom(student1, currentAcademicYear)}
                       </span>
                       {card1.printCount > 0 && (
                         <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] border border-amber-200">
@@ -478,7 +485,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                         รหัส {student2.studentId}
                       </span>
                       <span className="text-slate-400 font-sarabun text-[11px]">
-                        ม.{student2.classroom}
+                        {formatStudentGradeRoom(student2, currentAcademicYear)}
                       </span>
                       {card2.printCount > 0 && (
                         <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] border border-amber-200">
@@ -770,7 +777,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                               รหัส {s.studentId}
                             </span>
                             <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded font-sarabun text-[10px]">
-                              ชั้น ม.{s.classroom} ({s.level})
+                              {formatStudentGradeRoom(s, currentAcademicYear)} ({s.level})
                             </span>
                           </div>
                         </div>

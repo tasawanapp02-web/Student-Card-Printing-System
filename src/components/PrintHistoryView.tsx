@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PrintHistoryItem } from '../types';
 import { storageService } from '../utils/storage';
+import { formatHistoryClassroom } from '../utils/thaiDate';
 import {
   History,
   Search,
@@ -162,7 +163,7 @@ export const PrintHistoryView: React.FC<PrintHistoryViewProps> = ({
                       {item.studentName}
                     </td>
                     <td className="py-3 px-4 text-slate-600">
-                      {item.classroom} ({item.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'})
+                      {formatHistoryClassroom(item.classroom)} ({item.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'})
                     </td>
                     <td className="py-3 px-4 font-medium text-slate-700">
                       {item.guardianName}

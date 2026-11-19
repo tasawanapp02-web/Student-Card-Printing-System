@@ -112,6 +112,10 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
     templateId: string;
     nonce: number;
   } | null>(null);
+  const [editCardTarget, setEditCardTarget] = useState<{
+    cardId: string;
+    nonce: number;
+  } | null>(null);
 
   // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -187,7 +191,7 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-prompt selection:bg-blue-100 selection:text-blue-900">
       {/* Toast Notification */}
       {toast && (
-        <div className="no-print fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-xl border bg-white animate-in slide-in-from-bottom-5 duration-200">
+        <div className="no-print fixed bottom-20 lg:bottom-5 right-4 left-4 sm:left-auto sm:right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-xl border bg-white animate-in slide-in-from-bottom-5 duration-200">
           {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />}
           {toast.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
           {toast.type === 'info' && <Info className="w-5 h-5 text-blue-600 shrink-0" />}
@@ -227,7 +231,7 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
           />
 
           {/* Main Workspace Body */}
-          <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 print:p-0 print:m-0 print:max-w-none print:w-full">
+          <main className="flex-1 max-w-7xl w-full mx-auto p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-8 print:p-0 print:m-0 print:max-w-none print:w-full">
             {activeTab === 'pvcPrint' && (
               <PvcPrintView
                 currentUser={currentUser}
@@ -252,6 +256,8 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
               <GuardiansView
                 onNotify={showToast}
                 onSendCardToPrintTray={handleSendCardToPrintTray}
+                editCardTarget={editCardTarget}
+                onEditCardTargetHandled={() => setEditCardTarget(null)}
               />
             )}
 
@@ -259,6 +265,10 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
               <GuardianCardRegistryView
                 onNotify={showToast}
                 onSendCardToPrintTray={handleSendCardToPrintTray}
+                onEditCard={(cardId) => {
+                  setEditCardTarget({ cardId, nonce: Date.now() });
+                  setActiveTab('cards');
+                }}
               />
             )}
 

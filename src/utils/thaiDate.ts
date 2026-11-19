@@ -207,6 +207,54 @@ export function calculateCurrentGrade(
 }
 
 /**
+ * Format student grade & room cleanly as "ม.4/2" (without redundant "ห้อง" or duplicate grade prefix)
+ */
+export function formatStudentGradeRoom(
+  student: {
+    level: 'มัธยมศึกษาตอนต้น' | 'มัธยมศึกษาตอนปลาย';
+    entryYear: number;
+    classroom?: string;
+  },
+  currentAcademicYear: number = getCurrentBuddhistYear()
+): string {
+  const gradeInfo = calculateCurrentGrade(student.level, student.entryYear, currentAcademicYear);
+  const raw = (student.classroom || '')
+    .trim()
+    .replace(/^ชั้น\s*/i, '')
+    .replace(/^ห้อง\s*/i, '')
+    .replace(/^ม\./i, '')
+    .trim();
+
+  let roomOnly = raw;
+  if (raw.includes('/')) {
+    const parts = raw
+      .split('/')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    roomOnly = parts.length >= 2 ? parts.slice(1).join('/') : parts[0] || '';
+  }
+
+  if (!roomOnly) {
+    return `ม.${gradeInfo.gradeNumber}`;
+  }
+  return `ม.${gradeInfo.gradeNumber}/${roomOnly}`;
+}
+
+/**
+ * Normalize legacy stored classroom strings in print history (e.g. "ม.ม.4/2" or "4/2" -> "ม.4/2")
+ */
+export function formatHistoryClassroom(classroom?: string): string {
+  const clean = (classroom || '')
+    .trim()
+    .replace(/^ชั้น\s*/i, '')
+    .replace(/^ห้อง\s*/i, '')
+    .replace(/^(?:ม\.)+/i, 'ม.')
+    .trim();
+  if (!clean || clean === '-') return '-';
+  return clean.startsWith('ม.') ? clean : `ม.${clean}`;
+}
+
+/**
  * Calculate 3-Academic-Year Card Expiry Date (End of academic year: 30 เมษายน)
  * Year 1 (M.1 / M.4) -> valid until end of Year 3 (M.3 / M.6)
  * Expiry date is 30 April of (entryYear + 3) in Buddhist Era

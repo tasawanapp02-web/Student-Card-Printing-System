@@ -5,6 +5,7 @@ import {
   calculateCurrentGrade,
   getCurrentBuddhistYear,
   formatThaiDateShort,
+  formatStudentGradeRoom,
 } from '../utils/thaiDate';
 import {
   Users,
@@ -139,7 +140,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
   // Compute available classrooms & counts based on levelFilter + gradeFilter
   const classroomOptions = useMemo(() => {
-    const counts = new Map<string, number>();
+    const groups = new Map<string, { count: number; formattedLabels: Set<string> }>();
 
     students.forEach((s) => {
       if (levelFilter !== 'all' && s.level !== levelFilter) return;
@@ -149,16 +150,34 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
       const room = s.classroom.trim();
       if (!room) return;
-      counts.set(room, (counts.get(room) || 0) + 1);
+      const formatted = formatStudentGradeRoom(s, currentAcademicYear);
+      const existing = groups.get(room);
+      if (existing) {
+        existing.count += 1;
+        existing.formattedLabels.add(formatted);
+      } else {
+        groups.set(room, { count: 1, formattedLabels: new Set([formatted]) });
+      }
     });
 
-    return Array.from(counts.entries())
+    return Array.from(groups.entries())
       .sort(([a], [b]) => a.localeCompare(b, 'th', { numeric: true, sensitivity: 'base' }))
-      .map(([room, count]) => ({
-        value: room,
-        label: `ห้อง ${room}`,
-        count,
-      }));
+      .map(([room, { count, formattedLabels }]) => {
+        const cleanRoom = room.replace(/^ชั้น\s*/i, '').replace(/^ห้อง\s*/i, '').trim();
+        const label =
+          formattedLabels.size === 1
+            ? Array.from(formattedLabels)[0]
+            : cleanRoom.includes('/')
+            ? cleanRoom.startsWith('ม.')
+              ? cleanRoom
+              : `ม.${cleanRoom}`
+            : `ห้อง ${cleanRoom}`;
+        return {
+          value: room,
+          label,
+          count,
+        };
+      });
   }, [students, levelFilter, gradeFilter, currentAcademicYear]);
 
   // Keep gradeFilter & classroomFilter valid when parent filters change
@@ -197,7 +216,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         s.lastName.toLowerCase().includes(q) ||
         s.nickname.toLowerCase().includes(q) ||
         s.classroom.toLowerCase().includes(q) ||
-        gradeInfo.gradeLabel.toLowerCase().includes(q)
+        gradeInfo.gradeLabel.toLowerCase().includes(q) ||
+        formatStudentGradeRoom(s, currentAcademicYear).toLowerCase().includes(q)
       );
     });
   }, [students, levelFilter, gradeFilter, classroomFilter, searchQuery, currentAcademicYear]);
@@ -600,6 +620,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         s.lastName.toLowerCase().includes(q) ||
         s.nickname.toLowerCase().includes(q) ||
         s.classroom.toLowerCase().includes(q) ||
+        formatStudentGradeRoom(s, currentAcademicYear).toLowerCase().includes(q) ||
         matchesGuardian
       );
     });
@@ -848,7 +869,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                 <th className="py-3 px-4">ชื่อ - นามสกุล</th>
                 <th className="py-3 px-4">ชื่อเล่น</th>
                 <th className="py-3 px-4">ช่วงชั้น</th>
-                <th className="py-3 px-4">ห้อง</th>
+                <th className="py-3 px-4">ระดับ/ห้อง</th>
                 <th className="py-3 px-4">ปีที่เข้าศึกษา (พ.ศ.)</th>
                 <th className="py-3 px-4">ระดับชั้นคำนวณอัตโนมัติ</th>
                 <th className="py-3 px-4 text-center">จัดการ</th>
@@ -882,7 +903,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                         </span>
                       </td>
                       <td className="py-3 px-4 font-medium">
-                        ห้อง {s.classroom}
+                        {formatStudentGradeRoom(s, currentAcademicYear)}
                       </td>
                       <td className="py-3 px-4 text-slate-600">
                         พ.ศ. {s.entryYear}
@@ -1309,7 +1330,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                         <th className="p-2">รหัส</th>
                         <th className="p-2">ชื่อ - นามสกุล</th>
                         <th className="p-2">ช่วงชั้น</th>
-                        <th className="p-2">ห้อง</th>
+                        <th className="p-2">ระดับ/ห้อง</th>
                         <th className="p-2">ปีเข้า (พ.ศ.)</th>
                       </tr>
                     </thead>
@@ -1322,7 +1343,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                             {p.firstName} {p.lastName}
                           </td>
                           <td className="p-2">{p.level}</td>
-                          <td className="p-2">{p.classroom}</td>
+                          <td className="p-2">{formatStudentGradeRoom(p, currentAcademicYear)}</td>
                           <td className="p-2">{p.entryYear}</td>
                         </tr>
                       ))}
@@ -1612,7 +1633,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                               >
                                 {s.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'}
                               </span>
-                              <span>ห้อง {s.classroom}</span>
+                              <span>{formatStudentGradeRoom(s, currentAcademicYear)}</span>
                               <span>•</span>
                               <span>เข้าศึกษา พ.ศ. {s.entryYear}</span>
                               <span>•</span>

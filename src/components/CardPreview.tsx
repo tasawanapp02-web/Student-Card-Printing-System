@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CardDesignConfig, Student, Guardian, PickupCard } from '../types';
-import { formatThaiDateByFormat } from '../utils/thaiDate';
+import { formatStudentGradeRoom, formatThaiDateByFormat } from '../utils/thaiDate';
 import { storageService } from '../utils/storage';
 import QRCode from 'qrcode';
 
@@ -183,7 +183,12 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
     const studentLabelLayout = el.studentName.labelLayout || 'inline';
 
     // Resolve Student Class display
-    const cleanClassroom = (displayStudent.classroom || '').replace(/^ม\./, '').trim();
+    const cleanClassroom = formatStudentGradeRoom(
+      displayStudent,
+      storageService.getAcademicYear()
+    )
+      .replace(/^ม\./, '')
+      .trim();
     const classMode = el.studentClass.classDisplayMode || 'short_m';
     let studentClassDisplay = `ชั้น ม.${cleanClassroom}`;
     if (classMode === 'custom_prefix') {

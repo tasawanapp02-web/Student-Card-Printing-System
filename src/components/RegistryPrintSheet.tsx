@@ -8,6 +8,7 @@ import {
 import { CardPreview } from './CardPreview';
 import {
   calculateCurrentGrade,
+  formatStudentGradeRoom,
   formatThaiDateFull,
   formatThaiDateShort,
 } from '../utils/thaiDate';
@@ -319,7 +320,7 @@ export const RegistryPrintSheet: React.FC<RegistryPrintSheetProps> = ({
               >
                 <span>
                   <strong>ทะเบียนบัตรผู้ปกครอง:</strong> {studentFullName} (รหัส{' '}
-                  {student.studentId} • {gradeInfo.gradeLabel}/{student.classroom})
+                  {student.studentId} • {formatStudentGradeRoom(student, currentAcademicYear)})
                 </span>
                 <span style={{ color: '#475569' }}>วันที่: {formattedReportDate}</span>
               </div>
@@ -393,7 +394,7 @@ export const RegistryPrintSheet: React.FC<RegistryPrintSheetProps> = ({
                   <div>
                     <span style={{ color: '#64748b' }}>กำลังศึกษา: </span>
                     <strong>
-                      {gradeInfo.gradeLabel} / ห้อง {student.classroom} ปีการศึกษาที่{' '}
+                      {formatStudentGradeRoom(student, currentAcademicYear)} ปีการศึกษาที่{' '}
                       {currentAcademicYear}
                     </strong>
                   </div>

@@ -8,6 +8,7 @@ import {
   calculateCardExpiryDate,
   calculateCurrentGrade,
   getCurrentBuddhistYear,
+  formatStudentGradeRoom,
 } from '../utils/thaiDate';
 import { ThaiDatePicker } from './ThaiDatePicker';
 import { CardPreview } from './CardPreview';
@@ -47,12 +48,19 @@ import {
 interface GuardiansViewProps {
   onNotify: (msg: string, type?: 'success' | 'info' | 'error') => void;
   onSendCardToPrintTray: (cardId: string) => void;
+  editCardTarget?: { cardId: string; nonce: number } | null;
+  onEditCardTargetHandled?: () => void;
 }
 
 export const GuardiansView: React.FC<GuardiansViewProps> = ({
   onNotify,
   onSendCardToPrintTray,
+  editCardTarget,
+  onEditCardTargetHandled,
 }) => {
+  const [currentAcademicYear, setCurrentAcademicYear] = useState<number>(() =>
+    storageService.getAcademicYear() || getCurrentBuddhistYear()
+  );
   const [guardians, setGuardians] = useState<Guardian[]>(() => storageService.getGuardians());
   const [students, setStudents] = useState<Student[]>(() => storageService.getStudents());
   const [cards, setCards] = useState<PickupCard[]>(() => storageService.getCards());
@@ -63,6 +71,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
 
   useEffect(() => {
     return storageService.subscribe(() => {
+      setCurrentAcademicYear(storageService.getAcademicYear() || getCurrentBuddhistYear());
       setGuardians(storageService.getGuardians());
       setStudents(storageService.getStudents());
       setCards(storageService.getCards());
@@ -464,6 +473,31 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
     setIsCardModalOpen(true);
   };
 
+  useEffect(() => {
+    if (!editCardTarget) return;
+    const targetCard =
+      cards.find((c) => c.id === editCardTarget.cardId) ||
+      storageService.getCards().find((c) => c.id === editCardTarget.cardId);
+    if (targetCard) {
+      setActiveTab('cards');
+      setEditingCardId(targetCard.id);
+      setPairStep(3);
+      setCardForm({
+        studentId: targetCard.studentId,
+        guardianId: targetCard.guardianId,
+        issueDate: targetCard.issueDate,
+        expiryDate: targetCard.expiryDate,
+      });
+      setStudentSearchQuery('');
+      setGuardianSearchQuery('');
+      setPreviewDesignId('auto');
+      setIsCardModalOpen(true);
+    } else {
+      onNotify('ไม่พบข้อมูลบัตรรับส่งที่ต้องการแก้ไข', 'error');
+    }
+    onEditCardTargetHandled?.();
+  }, [editCardTarget]);
+
   // Issue or Update Card
   const handleIssueCard = (e?: React.FormEvent, sendToPrint: boolean = false) => {
     if (e) e.preventDefault();
@@ -628,12 +662,13 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
         s.lastName.toLowerCase().includes(q) ||
         (s.nickname && s.nickname.toLowerCase().includes(q)) ||
         s.classroom.toLowerCase().includes(q) ||
+        formatStudentGradeRoom(s, currentAcademicYear).toLowerCase().includes(q) ||
         g.firstName.toLowerCase().includes(q) ||
         g.lastName.toLowerCase().includes(q) ||
         g.relation.toLowerCase().includes(q)
       );
     });
-  }, [cards, studentMap, guardianMap, cardPrintFilter, searchQuery]);
+  }, [cards, studentMap, guardianMap, cardPrintFilter, searchQuery, currentAcademicYear]);
 
   const filteredGuardians = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -1076,7 +1111,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                             : 'bg-rose-50 text-rose-700 border border-rose-200'
                         }`}
                       >
-                        {student.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'} (ม.{student.classroom})
+                        {student.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'} ({formatStudentGradeRoom(student, currentAcademicYear)})
                       </span>
                     </div>
 
@@ -1271,7 +1306,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                                   : 'bg-rose-50 text-rose-700 border border-rose-200'
                               }`}
                             >
-                              {student.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'} • ม.{student.classroom}
+                              {student.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'} • {formatStudentGradeRoom(student, currentAcademicYear)}
                             </span>
                           </div>
                           <div className="font-bold text-slate-800">
@@ -1725,8 +1760,6 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
             {(() => {
               const selectedStudent = students.find((s) => s.studentId === cardForm.studentId);
               const selectedGuardian = guardians.find((g) => g.id === cardForm.guardianId);
-              const currentAcademicYear =
-                storageService.getAcademicYear() || getCurrentBuddhistYear();
 
               // Filtered students for quick search
               const filteredStudentsForPair = students.filter((s) => {
@@ -1738,6 +1771,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                   s.lastName.toLowerCase().includes(q) ||
                   (s.nickname && s.nickname.toLowerCase().includes(q)) ||
                   s.classroom.toLowerCase().includes(q) ||
+                  formatStudentGradeRoom(s, currentAcademicYear).toLowerCase().includes(q) ||
                   s.level.toLowerCase().includes(q)
                 );
               });
@@ -1959,11 +1993,6 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                             {filteredStudentsForPair.length > 0 ? (
                               filteredStudentsForPair.map((s) => {
                                 const isSelected = cardForm.studentId === s.studentId;
-                                const gradeInfo = calculateCurrentGrade(
-                                  s.level,
-                                  s.entryYear,
-                                  currentAcademicYear
-                                );
                                 return (
                                   <div
                                     key={s.studentId}
@@ -1989,7 +2018,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                                           )}
                                         </div>
                                         <div className="text-[11px] text-slate-500 font-sarabun">
-                                          {gradeInfo.gradeLabel} • ห้อง {s.classroom} ({s.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'})
+                                          {formatStudentGradeRoom(s, currentAcademicYear)} ({s.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'})
                                         </div>
                                       </div>
                                     </div>
@@ -2028,7 +2057,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                                     {selectedStudent.nickname && `(${selectedStudent.nickname})`}
                                   </div>
                                   <div className="text-[11px] text-slate-600 font-sarabun mt-0.5">
-                                    รหัส {selectedStudent.studentId} • {selectedStudent.level} (ห้อง {selectedStudent.classroom}) • เข้าศึกษา พ.ศ. {selectedStudent.entryYear}
+                                    รหัส {selectedStudent.studentId} • {formatStudentGradeRoom(selectedStudent, currentAcademicYear)} ({selectedStudent.level}) • เข้าศึกษา พ.ศ. {selectedStudent.entryYear}
                                   </div>
                                 </div>
 
@@ -2395,7 +2424,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                                     {selectedStudent.firstName} {selectedStudent.lastName}
                                   </div>
                                   <div className="text-[11px] text-slate-500">
-                                    {selectedStudent.level} • ห้อง {selectedStudent.classroom}
+                                    {formatStudentGradeRoom(selectedStudent, currentAcademicYear)} • {selectedStudent.level}
                                   </div>
                                 </div>
                               ) : (

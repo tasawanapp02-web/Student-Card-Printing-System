@@ -9,6 +9,7 @@ import {
 import { storageService } from '../utils/storage';
 import {
   calculateCurrentGrade,
+  formatStudentGradeRoom,
   formatThaiDateShort,
   getTodayDateString,
 } from '../utils/thaiDate';
@@ -17,7 +18,6 @@ import {
   sortCardsByGuardianRelation,
 } from '../utils/relations';
 import { CardPreview } from './CardPreview';
-import { ThaiDatePicker } from './ThaiDatePicker';
 import { RegistryPrintSheet } from './RegistryPrintSheet';
 import {
   Search,
@@ -47,6 +47,7 @@ import {
 interface GuardianCardRegistryViewProps {
   onNotify: (msg: string, type?: 'success' | 'info' | 'error') => void;
   onSendCardToPrintTray?: (cardId: string) => void;
+  onEditCard?: (cardId: string) => void;
 }
 
 const DEFAULT_CUSTOM_HEADER_TITLE = 'ทะเบียนบัตรรับส่งผู้ปกครองนักเรียน';
@@ -55,6 +56,7 @@ const DEFAULT_CUSTOM_HEADER_SUBTITLE = 'เอกสารตรวจสอบ�
 export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> = ({
   onNotify,
   onSendCardToPrintTray,
+  onEditCard,
 }) => {
   const [students, setStudents] = useState<Student[]>(() => storageService.getStudents());
   const [guardians, setGuardians] = useState<Guardian[]>(() => storageService.getGuardians());
@@ -82,6 +84,7 @@ export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> =
 
   // Unified Student Search State (รหัสนักเรียน, ชื่อ, สกุล, ชั้น)
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isSearchResultPicked, setIsSearchResultPicked] = useState<boolean>(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string>(() => {
     const initialStudents = storageService.getStudents();
     const initialCards = storageService.getCards();
@@ -94,22 +97,8 @@ export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> =
   // Document date (วันที่สำหรับพิมพ์เอกสาร)
   const [reportDate] = useState<string>(() => getTodayDateString());
 
-  // Card zoom inspect, edit & delete modals
+  // Card zoom inspect & delete modal
   const [inspectedCardId, setInspectedCardId] = useState<string | null>(null);
-  const [editingCard, setEditingCard] = useState<PickupCard | null>(null);
-  const [editCardForm, setEditCardForm] = useState<{
-    issueDate: string;
-    expiryDate: string;
-    status: PickupCard['status'];
-    relation: string;
-    phone: string;
-  }>({
-    issueDate: '',
-    expiryDate: '',
-    status: 'active',
-    relation: 'ผู้ปกครอง',
-    phone: '',
-  });
   const [deletingCard, setDeletingCard] = useState<PickupCard | null>(null);
   const [isSavingCardAction, setIsSavingCardAction] = useState<boolean>(false);
 
@@ -162,6 +151,7 @@ export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> =
     const tokens = rawQ.split(/\s+/).filter(Boolean);
     return sorted.filter((s) => {
       const grade = calculateCurrentGrade(s.level, s.entryYear, currentAcademicYear);
+      const formattedGradeRoom = formatStudentGradeRoom(s, currentAcademicYear).toLowerCase();
       const gradeAndRoom = `${grade.gradeLabel}/${s.classroom}`.toLowerCase();
       const gradeWithWord = `${grade.gradeLabel} ห้อง ${s.classroom}`.toLowerCase();
       const searchable = [
@@ -175,6 +165,7 @@ export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> =
         s.level,
         s.classroom,
         grade.gradeLabel,
+        formattedGradeRoom,
         gradeAndRoom,
         gradeWithWord,
         String(s.entryYear),
@@ -395,86 +386,6 @@ export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> =
     window.print();
   };
 
-  const handleOpenEditCard = (card: PickupCard) => {
-    const g = guardianMap.get(card.guardianId);
-    setEditingCard(card);
-    setEditCardForm({
-      issueDate: card.issueDate || getTodayDateString(),
-      expiryDate: card.expiryDate || getTodayDateString(),
-      status: card.status || 'active',
-      relation: g?.relation || 'ผู้ปกครอง',
-      phone: g?.phone || '',
-    });
-  };
-
-  const handleSaveEditCard = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingCard) return;
-    if (!editCardForm.issueDate || !editCardForm.expiryDate) {
-      onNotify('กรุณาระบุวันที่ออกบัตรและวันที่หมดอายุให้ครบถ้วน', 'error');
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const datesChanged =
-      editingCard.issueDate !== editCardForm.issueDate ||
-      editingCard.expiryDate !== editCardForm.expiryDate;
-    const statusChanged = editingCard.status !== editCardForm.status;
-
-    if (datesChanged && statusChanged) {
-      const step1Cards = cards.map((c) =>
-        c.id === editingCard.id
-          ? {
-              ...c,
-              issueDate: editCardForm.issueDate,
-              expiryDate: editCardForm.expiryDate,
-              qrCodeText: `CARD:${c.studentId}:${c.guardianId}:EXP-${editCardForm.expiryDate}`,
-              updatedAt: now,
-            }
-          : c
-      );
-      storageService.saveCards(step1Cards);
-    }
-
-    const updatedCards = cards.map((c) =>
-      c.id === editingCard.id
-        ? {
-            ...c,
-            issueDate: editCardForm.issueDate,
-            expiryDate: editCardForm.expiryDate,
-            status: editCardForm.status,
-            qrCodeText: `CARD:${c.studentId}:${c.guardianId}:EXP-${editCardForm.expiryDate}`,
-            updatedAt: now,
-          }
-        : c
-    );
-    setCards(updatedCards);
-    storageService.saveCards(updatedCards);
-
-    const linkedGuardian = guardians.find((g) => g.id === editingCard.guardianId);
-    if (
-      linkedGuardian &&
-      (linkedGuardian.relation !== editCardForm.relation ||
-        (linkedGuardian.phone || '') !== editCardForm.phone.trim())
-    ) {
-      const updatedGuardians = guardians.map((g) =>
-        g.id === linkedGuardian.id
-          ? {
-              ...g,
-              relation: editCardForm.relation,
-              phone: editCardForm.phone.trim(),
-              updatedAt: now,
-            }
-          : g
-      );
-      setGuardians(updatedGuardians);
-      storageService.saveGuardians(updatedGuardians);
-    }
-
-    setEditingCard(null);
-    onNotify('บันทึกการแก้ไขข้อมูลบัตรเรียบร้อยแล้ว', 'success');
-  };
-
   const handleConfirmDeleteCard = async () => {
     if (!deletingCard) return;
     setIsSavingCardAction(true);
@@ -587,9 +498,17 @@ export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> =
               <span>ค้นหาข้อมูลนักเรียน (รหัสนักเรียน, ชื่อ, นามสกุล, ชั้น)</span>
             </label>
             <span className="text-xs text-slate-500 font-sarabun">
-              พบนักเรียนที่ตรงกัน{' '}
-              <strong className="text-blue-700 font-mono">{filteredStudents.length}</strong> จากทั้งหมด{' '}
-              <strong className="font-mono">{students.length}</strong> คน
+              {searchQuery.trim() ? (
+                <>
+                  พบนักเรียนที่ตรงกัน{' '}
+                  <strong className="text-blue-700 font-mono">{filteredStudents.length}</strong> จากทั้งหมด{' '}
+                  <strong className="font-mono">{students.length}</strong> คน
+                </>
+              ) : (
+                <>
+                  นักเรียนทั้งหมด <strong className="font-mono">{students.length}</strong> คน
+                </>
+              )}
             </span>
           </div>
 
@@ -599,14 +518,20 @@ export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> =
               id="registry-student-search"
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsSearchResultPicked(false);
+              }}
               placeholder="พิมพ์รหัสนักเรียน 5 หลัก, ชื่อ, นามสกุล หรือชั้น เช่น 50101, สมชาย, ม.1/2 ..."
               className="w-full pl-10 pr-10 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 font-sarabun transition-colors"
             />
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
+                onClick={() => {
+                  setSearchQuery('');
+                  setIsSearchResultPicked(false);
+                }}
                 className="p-1 text-slate-400 hover:text-slate-700 rounded-lg absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer"
                 title="ล้างคำค้นหา"
               >
@@ -615,71 +540,78 @@ export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> =
             )}
           </div>
 
-          {/* Matching Student Selector Pills */}
+          {/* Matching Student Selector Pills (Shown only when searching, no scrollbar) */}
           {students.length === 0 ? (
             <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-sarabun">
               ยังไม่มีข้อมูลนักเรียนในระบบ กรุณาเพิ่มข้อมูลนักเรียนในเมนู &quot;ข้อมูลนักเรียน&quot; ก่อน
             </div>
-          ) : filteredStudents.length === 0 ? (
+          ) : searchQuery.trim() === '' ? null : filteredStudents.length === 0 ? (
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500 font-sarabun text-center">
               ไม่พบข้อมูลนักเรียนที่ตรงกับคำค้นหา &quot;{searchQuery}&quot;
             </div>
           ) : (
-            <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5">
-              {filteredStudents.slice(0, 30).map((student) => {
-                const isSelected = student.studentId === selectedStudentId;
-                const grade = calculateCurrentGrade(
-                  student.level,
-                  student.entryYear,
-                  currentAcademicYear
-                );
-                const count = cardCountByStudent.get(student.studentId) || 0;
-                return (
-                  <button
-                    key={student.studentId}
-                    type="button"
-                    onClick={() => setSelectedStudentId(student.studentId)}
-                    className={`shrink-0 px-3 py-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
-                      isSelected
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                        : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    <span
-                      className={`px-2 py-0.5 rounded-lg font-mono text-[11px] font-bold ${
-                        isSelected
-                          ? 'bg-white/20 text-white'
-                          : 'bg-slate-100 text-slate-700'
-                      }`}
-                    >
-                      {student.studentId}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold whitespace-nowrap">
-                        {student.prefix}
-                        {student.firstName} {student.lastName}
-                      </div>
-                      <div
-                        className={`text-[11px] font-sarabun flex items-center gap-1.5 ${
-                          isSelected ? 'text-blue-100' : 'text-slate-500'
+            (() => {
+              const pickedMatch = isSearchResultPicked
+                ? filteredStudents.filter((s) => s.studentId === selectedStudentId)
+                : [];
+              const visibleStudents =
+                pickedMatch.length > 0 ? pickedMatch : filteredStudents.slice(0, 30);
+
+              return (
+                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  {visibleStudents.map((student) => {
+                    const isSelected = student.studentId === selectedStudentId;
+                    const gradeRoom = formatStudentGradeRoom(student, currentAcademicYear);
+                    const count = cardCountByStudent.get(student.studentId) || 0;
+                    return (
+                      <button
+                        key={student.studentId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedStudentId(student.studentId);
+                          setIsSearchResultPicked(true);
+                        }}
+                        className={`shrink-0 px-3 py-2 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                          isSelected
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
                         }`}
                       >
-                        <span>
-                          {grade.gradeLabel}/{student.classroom}
+                        <span
+                          className={`px-2 py-0.5 rounded-lg font-mono text-[11px] font-bold ${
+                            isSelected
+                              ? 'bg-white/20 text-white'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {student.studentId}
                         </span>
-                        <span>•</span>
-                        <span>บัตร {count} ใบ</span>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-              {filteredStudents.length > 30 && (
-                <span className="shrink-0 text-[11px] text-slate-400 font-sarabun px-2">
-                  +{filteredStudents.length - 30} คน (พิมพ์ค้นหาเพิ่มเติมเพื่อเจาะจง)
-                </span>
-              )}
-            </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold whitespace-nowrap">
+                            {student.prefix}
+                            {student.firstName} {student.lastName}
+                          </div>
+                          <div
+                            className={`text-[11px] font-sarabun flex items-center gap-1.5 ${
+                              isSelected ? 'text-blue-100' : 'text-slate-500'
+                            }`}
+                          >
+                            <span>{gradeRoom}</span>
+                            <span>•</span>
+                            <span>บัตร {count} ใบ</span>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {!isSearchResultPicked && filteredStudents.length > 30 && (
+                    <span className="shrink-0 text-[11px] text-slate-400 font-sarabun px-2">
+                      +{filteredStudents.length - 30} คน (พิมพ์ค้นหาเพิ่มเติมเพื่อเจาะจง)
+                    </span>
+                  )}
+                </div>
+              );
+            })()
           )}
         </div>
 
@@ -734,14 +666,14 @@ export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> =
                 </div>
               </div>
 
-              {/* กำลังศึกษา ระดับชั้น / ห้อง ปีการศึกษา */}
+              {/* กำลังศึกษา ระดับ/ห้อง ปีการศึกษา */}
               <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/70 space-y-1">
                 <div className="text-[11px] text-slate-500 font-sarabun flex items-center gap-1.5">
                   <GraduationCap className="w-3.5 h-3.5 text-indigo-600" />
                   <span>กำลังศึกษา</span>
                 </div>
                 <div className="text-sm font-bold text-indigo-700">
-                  {studentAcademicInfo.gradeInfo.gradeLabel} / ห้อง {selectedStudent.classroom}
+                  {formatStudentGradeRoom(selectedStudent, currentAcademicYear)}
                 </div>
                 <div className="text-xs text-slate-600 font-sarabun">
                   ปีการศึกษาที่ {currentAcademicYear}
@@ -885,7 +817,7 @@ export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> =
                                 <div className="relative group/tip">
                                   <button
                                     type="button"
-                                    onClick={() => handleOpenEditCard(card)}
+                                    onClick={() => onEditCard?.(card.id)}
                                     aria-label="แก้ไขบัตร"
                                     title="แก้ไขบัตร"
                                     className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-500 hover:text-white border border-amber-200/80 transition-colors cursor-pointer"
@@ -992,180 +924,6 @@ export const GuardianCardRegistryView: React.FC<GuardianCardRegistryViewProps> =
                 scale={1.15}
               />
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Card Modal */}
-      {editingCard && selectedStudent && (
-        <div
-          className="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => setEditingCard(null)}
-        >
-          <div
-            className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-2xs">
-                  <Edit2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">แก้ไขข้อมูลบัตรรับส่งผู้ปกครอง</h3>
-                  <p className="text-[11px] text-slate-500 font-sarabun">
-                    นักเรียน: {selectedStudent.studentId} {selectedStudent.prefix}
-                    {selectedStudent.firstName} {selectedStudent.lastName}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingCard(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 rounded-xl cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEditCard} className="p-5 space-y-4">
-              {(() => {
-                const targetGuardian = guardianMap.get(editingCard.guardianId);
-                const previewGuardian = targetGuardian
-                  ? { ...targetGuardian, relation: editCardForm.relation, phone: editCardForm.phone }
-                  : undefined;
-                const previewCard: PickupCard = {
-                  ...editingCard,
-                  issueDate: editCardForm.issueDate,
-                  expiryDate: editCardForm.expiryDate,
-                  status: editCardForm.status,
-                  qrCodeText: `CARD:${editingCard.studentId}:${editingCard.guardianId}:EXP-${editCardForm.expiryDate}`,
-                };
-
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-                    <div className="md:col-span-5 flex flex-col items-center gap-2 bg-slate-50 border border-slate-200/80 rounded-2xl p-4">
-                      <div className="text-[11px] font-bold text-slate-600 self-start">
-                        ตัวอย่างบัตร
-                      </div>
-                      <CardPreview
-                        design={activeFrontDesign}
-                        student={selectedStudent}
-                        guardian={previewGuardian}
-                        card={previewCard}
-                        scale={0.78}
-                      />
-                      <div className="text-xs font-bold text-slate-800 text-center pt-1">
-                        {targetGuardian
-                          ? `${targetGuardian.prefix}${targetGuardian.firstName} ${targetGuardian.lastName}`
-                          : 'ไม่พบข้อมูลผู้ปกครอง'}
-                      </div>
-                    </div>
-
-                    <div className="md:col-span-7 space-y-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">
-                            ความสัมพันธ์
-                          </label>
-                          <select
-                            value={editCardForm.relation}
-                            onChange={(e) =>
-                              setEditCardForm({ ...editCardForm, relation: e.target.value })
-                            }
-                            className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun"
-                          >
-                            {GUARDIAN_RELATION_ORDER.map((rel) => (
-                              <option key={rel} value={rel}>
-                                {rel}
-                              </option>
-                            ))}
-                            {!(GUARDIAN_RELATION_ORDER as readonly string[]).includes(
-                              editCardForm.relation
-                            ) &&
-                              editCardForm.relation && (
-                                <option value={editCardForm.relation}>
-                                  {editCardForm.relation}
-                                </option>
-                              )}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">
-                            สถานะบัตร
-                          </label>
-                          <select
-                            value={editCardForm.status}
-                            onChange={(e) =>
-                              setEditCardForm({
-                                ...editCardForm,
-                                status: e.target.value as PickupCard['status'],
-                              })
-                            }
-                            className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun"
-                          >
-                            <option value="active">ใช้งานได้</option>
-                            <option value="expired">หมดอายุ</option>
-                            <option value="revoked">ยกเลิก</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">
-                          เบอร์โทรศัพท์ผู้ปกครอง
-                        </label>
-                        <input
-                          type="text"
-                          value={editCardForm.phone}
-                          onChange={(e) =>
-                            setEditCardForm({ ...editCardForm, phone: e.target.value })
-                          }
-                          placeholder="เช่น 081-234-5678"
-                          className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <ThaiDatePicker
-                          label="วันที่ออกบัตร"
-                          value={editCardForm.issueDate}
-                          onChange={(val) =>
-                            setEditCardForm({ ...editCardForm, issueDate: val })
-                          }
-                        />
-                        <ThaiDatePicker
-                          label="วันที่หมดอายุ"
-                          value={editCardForm.expiryDate}
-                          onChange={(val) =>
-                            setEditCardForm({ ...editCardForm, expiryDate: val })
-                          }
-                          quickPreset3YearsEntryYear={selectedStudent.entryYear}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingCard(null)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl cursor-pointer"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>บันทึกการแก้ไข</span>
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

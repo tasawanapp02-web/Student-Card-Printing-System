@@ -8,7 +8,7 @@ import {
   ImageAsset,
 } from '../types';
 import { storageService } from '../utils/storage';
-import { formatThaiDateTime } from '../utils/thaiDate';
+import { formatStudentGradeRoom, formatThaiDateTime } from '../utils/thaiDate';
 import { sortCardsByGuardianRelation } from '../utils/relations';
 import { CardPreview } from './CardPreview';
 import { BackCardPreview } from './BackCardPreview';
@@ -452,7 +452,7 @@ export const PrintPreviewTab: React.FC = () => {
           studentName: `${student1.prefix}${student1.firstName} ${student1.lastName}`,
           guardianName: `${guardian1.prefix}${guardian1.firstName} ${guardian1.lastName}`,
           level: student1.level,
-          classroom: `ม.${student1.classroom}`,
+          classroom: formatStudentGradeRoom(student1, storageService.getAcademicYear()),
           slotNumber: 1,
           printType: isReprint ? 'พิมพ์ซ้ำ (Reprint)' : 'บัตรใหม่',
           printSide: 'หน้าบัตร',
@@ -478,7 +478,7 @@ export const PrintPreviewTab: React.FC = () => {
           studentName: `${student2.prefix}${student2.firstName} ${student2.lastName}`,
           guardianName: `${guardian2.prefix}${guardian2.firstName} ${guardian2.lastName}`,
           level: student2.level,
-          classroom: `ม.${student2.classroom}`,
+          classroom: formatStudentGradeRoom(student2, storageService.getAcademicYear()),
           slotNumber: 2,
           printType: isReprint ? 'พิมพ์ซ้ำ (Reprint)' : 'บัตรใหม่',
           printSide: 'หน้าบัตร',
