@@ -144,7 +144,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {
           id: 'cardRegistry',
           label: 'ทะเบียนบัตรผู้ปกครอง',
-          description: 'ค้นหานักเรียน ดูบัตรเรียงความสัมพันธ์ และพิมพ์ A4',
+          description: 'ค้นหา บัตรผู้ปกครอง',
           icon: FileText,
         },
         {

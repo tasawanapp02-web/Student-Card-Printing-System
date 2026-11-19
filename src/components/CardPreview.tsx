@@ -16,6 +16,7 @@ interface CardPreviewProps {
   showBleedGuide?: boolean;
   cardWidthMm?: number;
   cardHeightMm?: number;
+  hideBorderAndShadow?: boolean;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -57,6 +58,7 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
   showBleedGuide = false,
   cardWidthMm = 85.6,
   cardHeightMm = 54.0,
+  hideBorderAndShadow = false,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
@@ -146,7 +148,11 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
       }}
     >
       <div
-        className="relative overflow-hidden rounded-[7px] shadow-md border border-slate-200/80 bg-white transition-shadow"
+        className={`relative overflow-hidden rounded-[7px] bg-white transition-shadow ${
+          hideBorderAndShadow
+            ? 'shadow-none border-0'
+            : 'shadow-md border border-slate-200/80'
+        }`}
         style={{
           width: `${baseWidthPx}px`,
           height: `${baseHeightPx}px`,

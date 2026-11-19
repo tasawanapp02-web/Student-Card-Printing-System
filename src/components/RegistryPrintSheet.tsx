@@ -358,7 +358,8 @@ export const RegistryPrintSheet: React.FC<RegistryPrintSheetProps> = ({
                     ข้อมูลนักเรียน ({student.level})
                   </div>
                   <div style={{ fontSize: '9pt', color: '#334155' }}>
-                    <strong>วันที่:</strong> {formattedReportDate}
+                    <strong>จำนวนบัตร:</strong> {cards.length} ใบ • <strong>วันที่:</strong>{' '}
+                    {formattedReportDate}
                   </div>
                 </div>
 
@@ -386,18 +387,21 @@ export const RegistryPrintSheet: React.FC<RegistryPrintSheetProps> = ({
                     ) : null}
                   </div>
                   <div>
-                    <span style={{ color: '#64748b' }}>เข้าศึกษา: </span>
-                    <strong>ปีการศึกษา {student.entryYear}</strong>
+                    <span style={{ color: '#64748b' }}>เข้ารับการศึกษา: </span>
+                    <strong>ปีการศึกษาที่ {student.entryYear}</strong>
                   </div>
                   <div>
                     <span style={{ color: '#64748b' }}>กำลังศึกษา: </span>
                     <strong>
-                      {gradeInfo.gradeLabel} ห้อง {student.classroom}
+                      {gradeInfo.gradeLabel} / ห้อง {student.classroom} ปีการศึกษาที่{' '}
+                      {currentAcademicYear}
                     </strong>
                   </div>
                   <div>
-                    <span style={{ color: '#64748b' }}>จำนวนบัตรผู้ปกครอง: </span>
-                    <strong>{cards.length} ใบ</strong>
+                    <span style={{ color: '#64748b' }}>คาดว่าจบการศึกษา: </span>
+                    <strong style={{ color: '#047857' }}>
+                      ปีการศึกษาที่ {student.entryYear + 2}
+                    </strong>
                   </div>
                 </div>
               </div>
