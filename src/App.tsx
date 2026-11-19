@@ -107,6 +107,7 @@ interface MainAppContentProps {
 function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
   const [activeTab, setActiveTab] = useState<MainTabType>('pvcPrint');
   const [reprintCardId, setReprintCardId] = useState<string | null>(null);
+  const [reprintDesignId, setReprintDesignId] = useState<string | null>(null);
   const [designerTarget, setDesignerTarget] = useState<{
     side: 'front' | 'back';
     templateId: string;
@@ -178,11 +179,13 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
       return;
     }
     setReprintCardId(cardId);
+    setReprintDesignId(null);
     setActiveTab('pvcPrint');
   };
 
-  const handleSendCardToPrintTray = (cardId: string) => {
+  const handleSendCardToPrintTray = (cardId: string, designId?: string) => {
     setReprintCardId(cardId);
+    setReprintDesignId(designId || null);
     setActiveTab('pvcPrint');
     showToast('ดึงข้อมูลบัตรลงสู่ถาดพิมพ์เรียบร้อยแล้ว', 'success');
   };
@@ -237,7 +240,11 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
                 currentUser={currentUser}
                 onNotify={showToast}
                 reprintCardId={reprintCardId}
-                onReprintLoaded={() => setReprintCardId(null)}
+                reprintDesignId={reprintDesignId}
+                onReprintLoaded={() => {
+                  setReprintCardId(null);
+                  setReprintDesignId(null);
+                }}
               />
             )}
 

@@ -90,6 +90,7 @@ export interface PickupCard {
   expiryDate: string; // YYYY-MM-DD
   status: 'active' | 'expired' | 'revoked';
   qrCodeText: string;
+  frontDesignId?: string; // Optional preferred front card template ID (empty for auto by level)
   createdAt: string;
   updatedAt?: string;
   printCount: number;

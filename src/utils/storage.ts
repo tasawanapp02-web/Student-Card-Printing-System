@@ -1432,6 +1432,7 @@ class StorageService {
       expiryDate: truncateStr(card.expiryDate || '', 20),
       status: card.status === 'expired' || card.status === 'revoked' ? card.status : 'active',
       qrCodeText: truncateStr(card.qrCodeText || `CARD:${card.studentId}`, 300),
+      frontDesignId: card.frontDesignId ? sanitizeId(card.frontDesignId, 'design') : '',
       printCount: Math.round(clampNum(card.printCount, 0, 100000, 0)),
       lastPrintedAt: card.lastPrintedAt ? truncateStr(card.lastPrintedAt, 60) : null,
       updatedAt: serverTimestamp(),

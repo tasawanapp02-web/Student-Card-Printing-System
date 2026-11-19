@@ -256,7 +256,7 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'id', 'ownerId', 'studentId', 'guardianId', 'issueDate', 'expiryDate',
-          'status', 'qrCodeText', 'printCount', 'lastPrintedAt', 'createdAt', 'updatedAt'
+          'status', 'qrCodeText', 'frontDesignId', 'printCount', 'lastPrintedAt', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.id) && data.id == docId
         && isValidId(data.ownerId)
@@ -266,6 +266,7 @@ service cloud.firestore {
         && data.expiryDate is string && data.expiryDate.size() >= 8 && data.expiryDate.size() <= 20
         && data.status in ['active', 'expired', 'revoked']
         && data.qrCodeText is string && data.qrCodeText.size() >= 1 && data.qrCodeText.size() <= 300
+        && (!('frontDesignId' in data) || isValidOptionalAssetId(data.frontDesignId))
         && data.printCount is int && data.printCount >= 0 && data.printCount <= 100000
         && (!('lastPrintedAt' in data) || data.lastPrintedAt == null || (data.lastPrintedAt is string && data.lastPrintedAt.size() <= 60))
         && data.createdAt is timestamp
@@ -545,6 +546,8 @@ service cloud.firestore {
           || (incoming().diff(existing()).affectedKeys().hasOnly(['printCount', 'lastPrintedAt', 'updatedAt']))
           || (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
           || (incoming().diff(existing()).affectedKeys().hasOnly(['issueDate', 'expiryDate', 'qrCodeText', 'updatedAt']))
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['issueDate', 'expiryDate', 'qrCodeText', 'frontDesignId', 'updatedAt']))
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['frontDesignId', 'updatedAt']))
         );
       allow delete: if isValidId(cardId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
     }

@@ -30,6 +30,7 @@ interface PvcPrintViewProps {
   currentUser: UserAccount | null;
   onNotify: (msg: string, type?: 'success' | 'info' | 'error') => void;
   reprintCardId?: string | null;
+  reprintDesignId?: string | null;
   onReprintLoaded?: () => void;
 }
 
@@ -37,6 +38,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
   currentUser,
   onNotify,
   reprintCardId,
+  reprintDesignId,
   onReprintLoaded,
 }) => {
   const [currentAcademicYear, setCurrentAcademicYear] = useState<number>(() =>
@@ -77,10 +79,20 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
   const [activePickerSlot, setActivePickerSlot] = useState<1 | 2 | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Handle incoming Reprint request
+  const resolveCardSlotDesign = (card?: PickupCard, overrideDesignId?: string | null): string => {
+    const candidate = overrideDesignId || card?.frontDesignId;
+    if (candidate && frontDesigns.some((d) => d.id === candidate)) {
+      return candidate;
+    }
+    return 'auto';
+  };
+
+  // Handle incoming Reprint / Send-to-tray request
   useEffect(() => {
     if (reprintCardId) {
+      const targetCard = cards.find((c) => c.id === reprintCardId);
       setCard1Id(reprintCardId);
+      setSlot1DesignId(resolveCardSlotDesign(targetCard, reprintDesignId));
       setEnableSlot1(true);
       onNotify('ดึงข้อมูลบัตรสำหรับพิมพ์ซ้ำ (Reprint) ลงในถาดพิมพ์เรียบร้อยแล้ว', 'info');
       if (onReprintLoaded) {
@@ -88,12 +100,16 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
       }
     } else if (cards.length > 0 && !card1Id) {
       // Auto pre-populate initial slots for quick testing
-      setCard1Id(cards[0]?.id || '');
+      const firstCard = cards[0];
+      setCard1Id(firstCard?.id || '');
+      setSlot1DesignId(resolveCardSlotDesign(firstCard));
       if (cards.length > 1) {
-        setCard2Id(cards[1]?.id || '');
+        const secondCard = cards[1];
+        setCard2Id(secondCard?.id || '');
+        setSlot2DesignId(resolveCardSlotDesign(secondCard));
       }
     }
-  }, [reprintCardId, cards]);
+  }, [reprintCardId, reprintDesignId, cards]);
 
   const card1 = cards.find((c) => c.id === card1Id);
   const student1 = card1 ? students.find((s) => s.studentId === card1.studentId) : undefined;
@@ -149,6 +165,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
       return;
     }
     setCard2Id(card1Id);
+    setSlot2DesignId(slot1DesignId);
     setEnableSlot2(true);
     onNotify('คัดลอกบัตรช่องที่ 1 ไปยังช่องที่ 2 เรียบร้อยแล้ว', 'success');
   };
@@ -740,11 +757,14 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                     <div
                       key={c.id}
                       onClick={() => {
+                        const preferredDesign = resolveCardSlotDesign(c);
                         if (activePickerSlot === 1) {
                           setCard1Id(c.id);
+                          setSlot1DesignId(preferredDesign);
                           setEnableSlot1(true);
                         } else {
                           setCard2Id(c.id);
+                          setSlot2DesignId(preferredDesign);
                           setEnableSlot2(true);
                         }
                         setActivePickerSlot(null);

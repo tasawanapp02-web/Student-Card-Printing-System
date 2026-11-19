@@ -408,6 +408,12 @@
           "type": "string",
           "maxLength": 300
         },
+        "frontDesignId": {
+          "type": "string",
+          "description": "Optional preferred front card design template ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]*$"
+        },
         "printCount": {
           "type": "integer"
         },

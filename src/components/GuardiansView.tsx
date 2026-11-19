@@ -43,11 +43,13 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Layers,
+  Star,
 } from 'lucide-react';
 
 interface GuardiansViewProps {
   onNotify: (msg: string, type?: 'success' | 'info' | 'error') => void;
-  onSendCardToPrintTray: (cardId: string) => void;
+  onSendCardToPrintTray: (cardId: string, designId?: string) => void;
   editCardTarget?: { cardId: string; nonce: number } | null;
   onEditCardTargetHandled?: () => void;
 }
@@ -244,13 +246,14 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
     guardianId: string;
     issueDate: string;
     expiryDate: string;
+    frontDesignId: string;
   }>({
     studentId: '',
     guardianId: '',
     issueDate: getTodayDateString(),
     expiryDate: calculateCardExpiryDate(storageService.getAcademicYear() || getCurrentBuddhistYear()),
+    frontDesignId: '',
   });
-  const [previewDesignId, setPreviewDesignId] = useState<string>('auto');
 
   useEffect(() => {
     const url = guardianForm.photoUrl;
@@ -450,15 +453,19 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
       guardianId: '',
       issueDate: getTodayDateString(),
       expiryDate: calculateCardExpiryDate(academicYear),
+      frontDesignId: '',
     });
     setStudentSearchQuery('');
     setGuardianSearchQuery('');
-    setPreviewDesignId('auto');
     setIsCardModalOpen(true);
   };
 
   // Open Pair modal to edit an existing card
   const handleOpenEditCardModal = (card: PickupCard) => {
+    const validFrontDesignId =
+      card.frontDesignId && frontDesigns.some((d) => d.id === card.frontDesignId)
+        ? card.frontDesignId
+        : '';
     setEditingCardId(card.id);
     setPairStep(3);
     setCardForm({
@@ -466,10 +473,10 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
       guardianId: card.guardianId,
       issueDate: card.issueDate,
       expiryDate: card.expiryDate,
+      frontDesignId: validFrontDesignId,
     });
     setStudentSearchQuery('');
     setGuardianSearchQuery('');
-    setPreviewDesignId('auto');
     setIsCardModalOpen(true);
   };
 
@@ -479,6 +486,10 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
       cards.find((c) => c.id === editCardTarget.cardId) ||
       storageService.getCards().find((c) => c.id === editCardTarget.cardId);
     if (targetCard) {
+      const validFrontDesignId =
+        targetCard.frontDesignId && frontDesigns.some((d) => d.id === targetCard.frontDesignId)
+          ? targetCard.frontDesignId
+          : '';
       setActiveTab('cards');
       setEditingCardId(targetCard.id);
       setPairStep(3);
@@ -487,10 +498,10 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
         guardianId: targetCard.guardianId,
         issueDate: targetCard.issueDate,
         expiryDate: targetCard.expiryDate,
+        frontDesignId: validFrontDesignId,
       });
       setStudentSearchQuery('');
       setGuardianSearchQuery('');
-      setPreviewDesignId('auto');
       setIsCardModalOpen(true);
     } else {
       onNotify('ไม่พบข้อมูลบัตรรับส่งที่ต้องการแก้ไข', 'error');
@@ -519,6 +530,10 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
     }
 
     let targetCardId = '';
+    const chosenFrontDesignId =
+      cardForm.frontDesignId && frontDesigns.some((d) => d.id === cardForm.frontDesignId)
+        ? cardForm.frontDesignId
+        : '';
 
     if (editingCardId) {
       const existingCard = cards.find((c) => c.id === editingCardId);
@@ -534,6 +549,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
           issueDate: cardForm.issueDate,
           expiryDate: cardForm.expiryDate,
           qrCodeText: `CARD:${cardForm.studentId}:${cardForm.guardianId}:EXP-${cardForm.expiryDate}`,
+          frontDesignId: chosenFrontDesignId,
           updatedAt: new Date().toISOString(),
         };
         const updated = cards.map((c) => (c.id === editingCardId ? updatedCard : c));
@@ -550,6 +566,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
           expiryDate: cardForm.expiryDate,
           status: existingCard.status,
           qrCodeText: `CARD:${cardForm.studentId}:${cardForm.guardianId}:EXP-${cardForm.expiryDate}`,
+          frontDesignId: chosenFrontDesignId,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           printCount: existingCard.printCount,
@@ -565,7 +582,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
       setEditingCardId(null);
 
       if (sendToPrint) {
-        onSendCardToPrintTray(targetCardId);
+        onSendCardToPrintTray(targetCardId, chosenFrontDesignId || undefined);
         onNotify('บันทึกการแก้ไขบัตรและส่งไปยังถาดพิมพ์เรียบร้อยแล้ว', 'success');
       } else {
         onNotify('บันทึกการแก้ไขข้อมูลบัตรรับส่งเรียบร้อยแล้ว', 'success');
@@ -581,6 +598,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
       expiryDate: cardForm.expiryDate,
       status: 'active',
       qrCodeText: `CARD:${cardForm.studentId}:${cardForm.guardianId}:EXP-${cardForm.expiryDate}`,
+      frontDesignId: chosenFrontDesignId,
       createdAt: new Date().toISOString(),
       printCount: 0,
       lastPrintedAt: null,
@@ -593,7 +611,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
     targetCardId = newCard.id;
 
     if (sendToPrint) {
-      onSendCardToPrintTray(targetCardId);
+      onSendCardToPrintTray(targetCardId, chosenFrontDesignId || undefined);
       onNotify('ออกบัตรรับส่งใหม่และส่งไปยังถาดพิมพ์เรียบร้อยแล้ว', 'success');
     } else {
       onNotify('ออกบัตรรับส่งนักเรียนใหม่เรียบร้อยแล้ว', 'success');
@@ -1170,6 +1188,20 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                           พิมพ์แล้ว {c.printCount} ครั้ง
                         </span>
                       </div>
+                      {(() => {
+                        const assignedDesign = c.frontDesignId
+                          ? frontDesigns.find((d) => d.id === c.frontDesignId)
+                          : undefined;
+                        if (!assignedDesign) return null;
+                        return (
+                          <div className="flex justify-between gap-2 pt-1 border-t border-slate-200/60">
+                            <span className="shrink-0">แม่แบบบัตร:</span>
+                            <span className="font-semibold text-blue-700 truncate">
+                              {assignedDesign.name || assignedDesign.title}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -1177,7 +1209,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                   <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200/70">
                     <button
                       type="button"
-                      onClick={() => onSendCardToPrintTray(c.id)}
+                      onClick={() => onSendCardToPrintTray(c.id, c.frontDesignId)}
                       className="flex-1 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <Printer className="w-3.5 h-3.5" />
@@ -1343,6 +1375,18 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                           <div>
                             หมดอายุ: <strong className="text-emerald-700">{formatThaiDateShort(c.expiryDate)}</strong>
                           </div>
+                          {(() => {
+                            const assignedDesign = c.frontDesignId
+                              ? frontDesigns.find((d) => d.id === c.frontDesignId)
+                              : undefined;
+                            if (!assignedDesign) return null;
+                            return (
+                              <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200/70 text-[10px] font-semibold max-w-[170px] truncate">
+                                <Layers className="w-2.5 h-2.5 shrink-0" />
+                                <span className="truncate">{assignedDesign.name || assignedDesign.title}</span>
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         <td className="py-3 px-4 whitespace-nowrap">
@@ -1362,7 +1406,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                           <div className="flex items-center justify-center gap-1.5 flex-wrap">
                             <button
                               type="button"
-                              onClick={() => onSendCardToPrintTray(c.id)}
+                              onClick={() => onSendCardToPrintTray(c.id, c.frontDesignId)}
                               className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
                             >
                               <Printer className="w-3.5 h-3.5" />
@@ -1805,12 +1849,13 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
               );
               const isAlreadyPaired = Boolean(existingPairCard);
 
+              const selectedDesignId = cardForm.frontDesignId || 'auto';
               const autoPreviewDesign = storageService.getCardDesign(
                 selectedStudent?.level || 'มัธยมศึกษาตอนต้น'
               );
               const previewDesign =
-                (previewDesignId !== 'auto' &&
-                  frontDesigns.find((d) => d.id === previewDesignId)) ||
+                (selectedDesignId !== 'auto' &&
+                  frontDesigns.find((d) => d.id === selectedDesignId)) ||
                 autoPreviewDesign;
 
               const virtualCard: PickupCard = {
@@ -1938,13 +1983,16 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                         3
                       </span>
                       <div className="min-w-0">
-                        <div className="text-xs font-bold">3. วันที่ออกบัตร / วันหมดอายุ</div>
+                        <div className="text-xs font-bold">3. วันที่ออกบัตร / แม่แบบบัตร</div>
                         <div
                           className={`text-[11px] truncate font-sarabun ${
                             pairStep === 3 ? 'text-blue-100' : 'text-slate-500'
                           }`}
                         >
-                          หมดอายุ: {formatThaiDateShort(cardForm.expiryDate)}
+                          {selectedDesignId === 'auto'
+                            ? 'แม่แบบอัตโนมัติ'
+                            : previewDesign.name || previewDesign.title}{' '}
+                          • หมดอายุ {formatThaiDateShort(cardForm.expiryDate)}
                         </div>
                       </div>
                     </button>
@@ -2337,13 +2385,13 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                         </div>
                       )}
 
-                      {/* STEP 3: ISSUE & EXPIRY DATES (APRIL) + BACK TO EDIT */}
+                      {/* STEP 3: ISSUE & EXPIRY DATES (APRIL) + TEMPLATE SELECTION + BACK TO EDIT */}
                       {pairStep === 3 && (
                         <div className="p-4 bg-white rounded-2xl border border-blue-200/80 shadow-xs space-y-4">
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
                               <Calendar className="w-4 h-4 text-blue-600" />
-                              <span>3. กำหนดวันที่ออกบัตรและวันหมดอายุ (Issue & Expiry Dates)</span>
+                              <span>3. กำหนดวันที่ออกบัตรและเลือกแม่แบบสำหรับพิมพ์</span>
                             </div>
                             <button
                               type="button"
@@ -2388,6 +2436,117 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                             </div>
                             <div className="text-[11px] text-blue-800 font-sarabun leading-relaxed">
                               ระดับ ม.ต้น (ม.1 - ม.3) หรือ ม.ปลาย (ม.4 - ม.6) ตั้งวันหมดอายุเป็นเดือน เมษายน (30 เมษายน) และสามารถปรับแก้ไขวันที่ได้ตามต้องการ
+                            </div>
+                          </div>
+
+                          {/* Template Selection for Printing */}
+                          <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200 space-y-2.5">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                <Layers className="w-4 h-4 text-blue-600" />
+                                <span>เลือกแม่แบบหน้าบัตรสำหรับพิมพ์</span>
+                              </div>
+                              <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                                {selectedDesignId === 'auto'
+                                  ? `อัตโนมัติ: ${autoPreviewDesign.name || autoPreviewDesign.title}`
+                                  : previewDesign.name || previewDesign.title}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-0.5">
+                              {/* Auto Option */}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCardForm((prev) => ({ ...prev, frontDesignId: '' }))
+                                }
+                                className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
+                                  selectedDesignId === 'auto'
+                                    ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500 shadow-2xs'
+                                    : 'bg-white border-slate-200 hover:border-blue-300 hover:bg-slate-50'
+                                }`}
+                              >
+                                <div className="shrink-0 rounded-md overflow-hidden border border-slate-200 bg-slate-100 pointer-events-none">
+                                  <CardPreview
+                                    design={autoPreviewDesign}
+                                    scale={0.21}
+                                    hideBorderAndShadow={true}
+                                  />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="text-xs font-bold text-slate-800 truncate">
+                                      อัตโนมัติตามระดับชั้น
+                                    </span>
+                                    {selectedDesignId === 'auto' && (
+                                      <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-sarabun truncate mt-0.5">
+                                    {autoPreviewDesign.name || autoPreviewDesign.title}
+                                  </div>
+                                  <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                    ค่าเริ่มต้นอัตโนมัติ
+                                  </span>
+                                </div>
+                              </button>
+
+                              {/* All Front Card Templates */}
+                              {frontDesigns.map((tpl) => {
+                                const isSelected = selectedDesignId === tpl.id;
+                                return (
+                                  <button
+                                    key={tpl.id}
+                                    type="button"
+                                    onClick={() =>
+                                      setCardForm((prev) => ({ ...prev, frontDesignId: tpl.id }))
+                                    }
+                                    className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
+                                      isSelected
+                                        ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500 shadow-2xs'
+                                        : 'bg-white border-slate-200 hover:border-blue-300 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <div className="shrink-0 rounded-md overflow-hidden border border-slate-200 bg-slate-100 pointer-events-none">
+                                      <CardPreview
+                                        design={tpl}
+                                        scale={0.21}
+                                        hideBorderAndShadow={true}
+                                      />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center justify-between gap-1">
+                                        <span className="text-xs font-bold text-slate-800 truncate">
+                                          {tpl.name || tpl.title}
+                                        </span>
+                                        {isSelected && (
+                                          <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                        )}
+                                      </div>
+                                      <div className="text-[10px] text-slate-500 font-sarabun truncate mt-0.5">
+                                        {tpl.title}
+                                      </div>
+                                      <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                        <span
+                                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                            tpl.level === 'มัธยมศึกษาตอนต้น'
+                                              ? 'bg-blue-100 text-blue-800'
+                                              : 'bg-rose-100 text-rose-800'
+                                          }`}
+                                        >
+                                          {tpl.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'}
+                                        </span>
+                                        {tpl.isDefault && (
+                                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 inline-flex items-center gap-0.5">
+                                            <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                                            หลัก
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
 
@@ -2527,27 +2686,36 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                         </div>
 
                         <div className="w-full mt-3 pt-2.5 border-t border-slate-200 space-y-2">
-                          <div className="text-center">
-                            <span className="text-[11px] text-slate-500 font-sarabun">
-                              แบบบัตรที่แสดง: <strong>{previewDesign.name || previewDesign.title}</strong>
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                              <Layers className="w-3.5 h-3.5 text-blue-600" />
+                              <span>แม่แบบหน้าบัตรสำหรับพิมพ์:</span>
+                            </label>
+                            <span className="text-[11px] text-slate-600 font-sarabun truncate max-w-[180px]">
+                              <strong>{previewDesign.name || previewDesign.title}</strong>
                             </span>
                           </div>
-                          {frontDesigns.length > 1 && (
-                            <select
-                              value={previewDesignId}
-                              onChange={(e) => setPreviewDesignId(e.target.value)}
-                              className="w-full px-2.5 py-1.5 text-[11px] bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun"
-                            >
-                              <option value="auto">
-                                ตัวอย่างอัตโนมัติตามระดับชั้น ({autoPreviewDesign.name || autoPreviewDesign.title})
+                          <select
+                            aria-label="เลือกแม่แบบหน้าบัตรสำหรับพิมพ์"
+                            value={selectedDesignId}
+                            onChange={(e) =>
+                              setCardForm((prev) => ({
+                                ...prev,
+                                frontDesignId: e.target.value === 'auto' ? '' : e.target.value,
+                              }))
+                            }
+                            className="w-full px-2.5 py-1.5 text-xs font-medium bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun cursor-pointer"
+                          >
+                            <option value="auto">
+                              อัตโนมัติตามระดับชั้น ({autoPreviewDesign.name || autoPreviewDesign.title})
+                            </option>
+                            {frontDesigns.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                [{d.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'}] {d.name || d.title}
+                                {d.isDefault ? ' ★ ค่าเริ่มต้น' : ''}
                               </option>
-                              {frontDesigns.map((d) => (
-                                <option key={d.id} value={d.id}>
-                                  [{d.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'}] {d.name || d.title}
-                                </option>
-                              ))}
-                            </select>
-                          )}
+                            ))}
+                          </select>
                         </div>
                       </div>
 
@@ -2581,7 +2749,10 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                               onClick={() => {
                                 if (existingPairCard) {
                                   setIsCardModalOpen(false);
-                                  onSendCardToPrintTray(existingPairCard.id);
+                                  onSendCardToPrintTray(
+                                    existingPairCard.id,
+                                    cardForm.frontDesignId || existingPairCard.frontDesignId || undefined
+                                  );
                                 }
                               }}
                               className="w-full py-2 px-3 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 rounded-xl border border-amber-300 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
