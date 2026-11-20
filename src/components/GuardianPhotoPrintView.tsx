@@ -16,6 +16,7 @@ import {
   DEFAULT_PHOTO_MARGINS_MM,
   PhotoPrintSheet,
   getPhotoPrintSheetMetrics,
+  hasLinkedGuardianNames,
   paginatePhotoPrintAssets,
 } from './PhotoPrintSheet';
 import {
@@ -48,6 +49,8 @@ import {
   Minus,
   Plus,
   Ruler,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 
 type PhotoSizePreset = '1in' | '1.5in' | '2in' | 'custom';
@@ -102,6 +105,8 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
   const [sizePreset, setSizePreset] = useState<PhotoSizePreset>('1.5in');
   const [photoWidthCm, setPhotoWidthCm] = useState<number>(3.0);
   const [photoHeightCm, setPhotoHeightCm] = useState<number>(4.0);
+  const [lockAspectRatio, setLockAspectRatio] = useState<boolean>(true);
+  const [lockedRatio, setLockedRatio] = useState<number>(3.0 / 4.0);
 
   // Print Layout Settings
   const [layout, setLayout] = useState<PhotoPrintLayout>('horizontal');
@@ -245,6 +250,11 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
   const effectivePhotoWidthMm = Number((effectivePhotoWidthCm * 10).toFixed(2));
   const effectivePhotoHeightMm = Number((effectivePhotoHeightCm * 10).toFixed(2));
 
+  const hasGuardianNames = useMemo(
+    () => showGuardianName && hasLinkedGuardianNames(expandedSelectedAssets, guardians),
+    [showGuardianName, expandedSelectedAssets, guardians]
+  );
+
   const sheetMetrics = useMemo(
     () =>
       getPhotoPrintSheetMetrics(
@@ -254,7 +264,8 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
         showGuardianName,
         marginsMm,
         effectivePhotoWidthMm,
-        effectivePhotoHeightMm
+        effectivePhotoHeightMm,
+        hasGuardianNames
       ),
     [
       layout,
@@ -264,6 +275,7 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
       marginsMm,
       effectivePhotoWidthMm,
       effectivePhotoHeightMm,
+      hasGuardianNames,
     ]
   );
 
@@ -277,7 +289,8 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
         showGuardianName,
         marginsMm,
         effectivePhotoWidthMm,
-        effectivePhotoHeightMm
+        effectivePhotoHeightMm,
+        hasGuardianNames
       ),
     [
       expandedSelectedAssets,
@@ -288,6 +301,7 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
       marginsMm,
       effectivePhotoWidthMm,
       effectivePhotoHeightMm,
+      hasGuardianNames,
     ]
   );
 
@@ -297,6 +311,84 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
     if (matched) {
       setPhotoWidthCm(matched.widthCm);
       setPhotoHeightCm(matched.heightCm);
+      setLockedRatio(matched.widthCm / matched.heightCm);
+    }
+  };
+
+  const handleToggleAspectLock = () => {
+    setLockAspectRatio((prev) => {
+      const next = !prev;
+      if (next) {
+        const ratio = effectivePhotoWidthCm / effectivePhotoHeightCm;
+        if (Number.isFinite(ratio) && ratio > 0) {
+          setLockedRatio(ratio);
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleWidthCmChange = (rawValue: string) => {
+    const val = Number(rawValue);
+    setSizePreset('custom');
+    if (!Number.isFinite(val)) {
+      setPhotoWidthCm(3);
+      return;
+    }
+    setPhotoWidthCm(val);
+    if (lockAspectRatio && val > 0 && lockedRatio > 0) {
+      const nextHeight = Math.max(1, Math.min(26, Number((val / lockedRatio).toFixed(2))));
+      setPhotoHeightCm(nextHeight);
+    }
+  };
+
+  const handleWidthCmBlur = () => {
+    const clampedWidth = Math.max(
+      1,
+      Math.min(
+        20,
+        Number((Number.isFinite(photoWidthCm) && photoWidthCm > 0 ? photoWidthCm : 3).toFixed(2))
+      )
+    );
+    setPhotoWidthCm(clampedWidth);
+    if (lockAspectRatio && lockedRatio > 0) {
+      const syncedHeight = Math.max(
+        1,
+        Math.min(26, Number((clampedWidth / lockedRatio).toFixed(2)))
+      );
+      setPhotoHeightCm(syncedHeight);
+    }
+  };
+
+  const handleHeightCmChange = (rawValue: string) => {
+    const val = Number(rawValue);
+    setSizePreset('custom');
+    if (!Number.isFinite(val)) {
+      setPhotoHeightCm(4);
+      return;
+    }
+    setPhotoHeightCm(val);
+    if (lockAspectRatio && val > 0 && lockedRatio > 0) {
+      const nextWidth = Math.max(1, Math.min(20, Number((val * lockedRatio).toFixed(2))));
+      setPhotoWidthCm(nextWidth);
+    }
+  };
+
+  const handleHeightCmBlur = () => {
+    const clampedHeight = Math.max(
+      1,
+      Math.min(
+        26,
+        Number((Number.isFinite(photoHeightCm) && photoHeightCm > 0 ? photoHeightCm : 4).toFixed(2))
+      )
+    );
+    setPhotoHeightCm(clampedHeight);
+    if (lockAspectRatio && lockedRatio > 0) {
+      const syncedWidth = Math.max(
+        1,
+        Math.min(20, Number((clampedHeight * lockedRatio).toFixed(2)))
+      );
+      setPhotoWidthCm(syncedWidth);
     }
   };
 
@@ -1096,7 +1188,42 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5 pt-0.5">
+              <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
+                <span className="text-[10px] text-slate-500 font-sarabun">
+                  {lockAspectRatio
+                    ? `สัดส่วนคงที่ (กว้าง:สูง = ${lockedRatio.toFixed(2)})`
+                    : 'ปรับความกว้างและความสูงแยกอิสระ'}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleToggleAspectLock}
+                  aria-pressed={lockAspectRatio}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all cursor-pointer ${
+                    lockAspectRatio
+                      ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                  title={
+                    lockAspectRatio
+                      ? 'คลิกเพื่อปิดการล็อกสัดส่วนความกว้างและความสูง'
+                      : 'คลิกเพื่อเปิดล็อกสัดส่วนความกว้างและความสูงให้สัมพันธ์กัน'
+                  }
+                >
+                  {lockAspectRatio ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5 text-blue-600" />
+                      <span>ล็อกสัดส่วน: เปิด</span>
+                    </>
+                  ) : (
+                    <>
+                      <Unlock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>ล็อกสัดส่วน: ปิด</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
                 <div className="space-y-1">
                   <label
                     htmlFor="photo-width-cm"
@@ -1112,16 +1239,8 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
                       max={20}
                       step={0.1}
                       value={photoWidthCm}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setSizePreset('custom');
-                        setPhotoWidthCm(Number.isFinite(val) ? val : 3);
-                      }}
-                      onBlur={() =>
-                        setPhotoWidthCm((prev) =>
-                          Math.max(1, Math.min(20, Number((prev || 3).toFixed(2))))
-                        )
-                      }
+                      onChange={(e) => handleWidthCmChange(e.target.value)}
+                      onBlur={handleWidthCmBlur}
                       className="w-full pl-2.5 pr-9 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-sarabun">
@@ -1145,16 +1264,8 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
                       max={26}
                       step={0.1}
                       value={photoHeightCm}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setSizePreset('custom');
-                        setPhotoHeightCm(Number.isFinite(val) ? val : 4);
-                      }}
-                      onBlur={() =>
-                        setPhotoHeightCm((prev) =>
-                          Math.max(1, Math.min(26, Number((prev || 4).toFixed(2))))
-                        )
-                      }
+                      onChange={(e) => handleHeightCmChange(e.target.value)}
+                      onBlur={handleHeightCmBlur}
                       className="w-full pl-2.5 pr-9 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-sarabun">
@@ -1326,17 +1437,28 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
                     ระยะขอบกระดาษ (มม.)
                   </label>
                   <div className="flex items-center gap-1">
-                    {[0, 5, 10, 15].map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => applyUniformMargins(preset)}
-                        className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 cursor-pointer"
-                        title={`ตั้งขอบกระดาษทุกด้านเป็น ${preset} มม.`}
-                      >
-                        {preset}
-                      </button>
-                    ))}
+                    {[0, 5, 10, 15].map((preset) => {
+                      const isActive =
+                        marginsMm.top === preset &&
+                        marginsMm.bottom === preset &&
+                        marginsMm.left === preset &&
+                        marginsMm.right === preset;
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => applyUniformMargins(preset)}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border cursor-pointer transition-colors ${
+                            isActive
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                          }`}
+                          title={`ตั้งขอบกระดาษทุกด้านเป็น ${preset} มม.`}
+                        >
+                          {preset}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5">

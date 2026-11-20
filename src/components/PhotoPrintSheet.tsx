@@ -31,10 +31,10 @@ export interface PhotoPrintSheetProps {
 const MM_TO_PX = 3.7795275591;
 
 export const DEFAULT_PHOTO_MARGINS_MM: PhotoMarginsMm = {
-  top: 10,
-  right: 10,
-  bottom: 10,
-  left: 10,
+  top: 5,
+  right: 5,
+  bottom: 5,
+  left: 5,
 };
 
 function sanitizeMargins(margins?: PhotoMarginsMm): PhotoMarginsMm {
@@ -55,7 +55,8 @@ export function getPhotoPrintSheetMetrics(
   showGuardianName: boolean,
   marginsMm?: PhotoMarginsMm,
   photoWidthMm: number = 30,
-  photoHeightMm: number = 40
+  photoHeightMm: number = 40,
+  hasGuardianNames: boolean = true
 ) {
   const safeGap = Math.max(0.5, Number.isFinite(gapMm) ? gapMm : 0.5);
   const safePhotoWidthMm =
@@ -69,7 +70,7 @@ export function getPhotoPrintSheetMetrics(
   const margins = sanitizeMargins(marginsMm);
   const pageWidthMm = paperOrientation === 'portrait' ? 210 : 297;
   const pageHeightMm = paperOrientation === 'portrait' ? 297 : 210;
-  const labelHeightMm = showGuardianName ? 12 : 8;
+  const labelHeightMm = showGuardianName && hasGuardianNames ? 6.8 : 3.8;
   const printableWidthMm = Math.max(safePhotoWidthMm, pageWidthMm - margins.left - margins.right);
   const printableHeightMm = Math.max(
     safePhotoHeightMm + labelHeightMm,
@@ -80,11 +81,11 @@ export function getPhotoPrintSheetMetrics(
 
   const colsPerPage = Math.max(
     1,
-    Math.floor((printableWidthMm + safeGap) / (cellWidthMm + safeGap))
+    Math.floor((printableWidthMm + safeGap + 1e-6) / (cellWidthMm + safeGap))
   );
   const rowsPerPage = Math.max(
     1,
-    Math.floor((printableHeightMm + safeGap) / (cellHeightMm + safeGap))
+    Math.floor((printableHeightMm + safeGap + 1e-6) / (cellHeightMm + safeGap))
   );
   const perPage = colsPerPage * rowsPerPage;
 
@@ -113,7 +114,8 @@ export function paginatePhotoPrintAssets(
   showGuardianName: boolean,
   marginsMm?: PhotoMarginsMm,
   photoWidthMm: number = 30,
-  photoHeightMm: number = 40
+  photoHeightMm: number = 40,
+  hasGuardianNames: boolean = true
 ): ImageAsset[][] {
   if (assets.length === 0) return [];
   const { perPage } = getPhotoPrintSheetMetrics(
@@ -123,7 +125,8 @@ export function paginatePhotoPrintAssets(
     showGuardianName,
     marginsMm,
     photoWidthMm,
-    photoHeightMm
+    photoHeightMm,
+    hasGuardianNames
   );
   const pages: ImageAsset[][] = [];
   for (let i = 0; i < assets.length; i += perPage) {
@@ -144,6 +147,10 @@ function resolveLinkedGuardianLabel(asset: ImageAsset, guardians: Guardian[]): s
   );
   if (!matched) return '';
   return `${matched.prefix}${matched.firstName} ${matched.lastName}`.trim();
+}
+
+export function hasLinkedGuardianNames(assets: ImageAsset[], guardians: Guardian[]): boolean {
+  return assets.some((asset) => Boolean(resolveLinkedGuardianLabel(asset, guardians)));
 }
 
 function mapHorizontalFlex(align: PhotoHorizontalAlign): 'flex-start' | 'center' | 'flex-end' {
@@ -176,6 +183,7 @@ export const PhotoPrintSheet: React.FC<PhotoPrintSheetProps> = ({
   zoom = 1,
   isPrintMode = false,
 }) => {
+  const hasGuardianNames = showGuardianName && hasLinkedGuardianNames(assets, guardians);
   const metrics = getPhotoPrintSheetMetrics(
     layout,
     paperOrientation,
@@ -183,7 +191,8 @@ export const PhotoPrintSheet: React.FC<PhotoPrintSheetProps> = ({
     showGuardianName,
     marginsMm,
     photoWidthMm,
-    photoHeightMm
+    photoHeightMm,
+    hasGuardianNames
   );
   const pages = paginatePhotoPrintAssets(
     assets,
@@ -193,7 +202,8 @@ export const PhotoPrintSheet: React.FC<PhotoPrintSheetProps> = ({
     showGuardianName,
     marginsMm,
     photoWidthMm,
-    photoHeightMm
+    photoHeightMm,
+    hasGuardianNames
   );
 
   if (pages.length === 0) {
@@ -226,10 +236,12 @@ export const PhotoPrintSheet: React.FC<PhotoPrintSheetProps> = ({
         key={key}
         style={{
           width: `${metrics.photoWidthMm}mm`,
+          height: `${metrics.cellHeightMm}mm`,
           flexShrink: 0,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
+          overflow: 'hidden',
           breakInside: 'avoid',
         }}
       >
@@ -245,6 +257,7 @@ export const PhotoPrintSheet: React.FC<PhotoPrintSheetProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            flexShrink: 0,
           }}
         >
           {imgSrc ? (
@@ -275,15 +288,17 @@ export const PhotoPrintSheet: React.FC<PhotoPrintSheetProps> = ({
         <div
           style={{
             width: `${metrics.photoWidthMm}mm`,
-            marginTop: '1mm',
+            marginTop: '0.6mm',
             textAlign: 'center',
-            fontSize: '7.5pt',
-            lineHeight: 1.2,
+            fontSize: '7pt',
+            lineHeight: 1.15,
             fontWeight: 600,
             color: '#0f172a',
-            wordBreak: 'break-word',
-            overflowWrap: 'anywhere',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
           }}
+          title={displayName}
         >
           {displayName}
         </div>
@@ -291,13 +306,16 @@ export const PhotoPrintSheet: React.FC<PhotoPrintSheetProps> = ({
           <div
             style={{
               width: `${metrics.photoWidthMm}mm`,
-              marginTop: '0.4mm',
+              marginTop: '0.3mm',
               textAlign: 'center',
               fontSize: '6.5pt',
               lineHeight: 1.15,
               color: '#475569',
-              wordBreak: 'break-word',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
             }}
+            title={guardianName}
           >
             {guardianName}
           </div>
