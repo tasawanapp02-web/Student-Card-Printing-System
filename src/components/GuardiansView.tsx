@@ -44,7 +44,6 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Layers,
-  Star,
 } from 'lucide-react';
 
 interface GuardiansViewProps {
@@ -467,7 +466,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
         ? card.frontDesignId
         : '';
     setEditingCardId(card.id);
-    setPairStep(3);
+    setPairStep(1);
     setCardForm({
       studentId: card.studentId,
       guardianId: card.guardianId,
@@ -492,7 +491,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
           : '';
       setActiveTab('cards');
       setEditingCardId(targetCard.id);
-      setPairStep(3);
+      setPairStep(1);
       setCardForm({
         studentId: targetCard.studentId,
         guardianId: targetCard.guardianId,
@@ -512,8 +511,38 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
   // Issue or Update Card
   const handleIssueCard = (e?: React.FormEvent, sendToPrint: boolean = false) => {
     if (e) e.preventDefault();
-    if (!cardForm.studentId || !cardForm.guardianId) {
-      onNotify('กรุณาเลือกข้อมูลนักเรียนและผู้ปกครองให้ครบถ้วน', 'error');
+
+    const chosenFrontDesignId =
+      cardForm.frontDesignId && frontDesigns.some((d) => d.id === cardForm.frontDesignId)
+        ? cardForm.frontDesignId
+        : '';
+    const hasValidDates = Boolean(cardForm.issueDate.trim() && cardForm.expiryDate.trim());
+    const validGuardian = guardians.some((g) => g.id === cardForm.guardianId);
+    const validStudent = students.some((s) => s.studentId === cardForm.studentId);
+
+    if (!chosenFrontDesignId) {
+      onNotify('กรุณาเลือกแม่แบบหน้าบัตรสำหรับพิมพ์ให้เรียบร้อยก่อนบันทึก (ขั้นตอนที่ 1)', 'error');
+      setPairStep(1);
+      return;
+    }
+    if (!hasValidDates) {
+      onNotify('กรุณากำหนดวันที่ออกบัตรและวันหมดอายุให้ครบถ้วน (ขั้นตอนที่ 1)', 'error');
+      setPairStep(1);
+      return;
+    }
+    if (cardForm.expiryDate < cardForm.issueDate) {
+      onNotify('วันหมดอายุต้องไม่น้อยกว่าวันที่ออกบัตร (ขั้นตอนที่ 1)', 'error');
+      setPairStep(1);
+      return;
+    }
+    if (!validGuardian) {
+      onNotify('กรุณาเลือกข้อมูลผู้ปกครองให้ครบถ้วนก่อนบันทึก (ขั้นตอนที่ 2)', 'error');
+      setPairStep(2);
+      return;
+    }
+    if (!validStudent) {
+      onNotify('กรุณาเลือกข้อมูลนักเรียนให้ครบถ้วนก่อนบันทึก (ขั้นตอนที่ 3)', 'error');
+      setPairStep(3);
       return;
     }
 
@@ -530,10 +559,6 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
     }
 
     let targetCardId = '';
-    const chosenFrontDesignId =
-      cardForm.frontDesignId && frontDesigns.some((d) => d.id === cardForm.frontDesignId)
-        ? cardForm.frontDesignId
-        : '';
 
     if (editingCardId) {
       const existingCard = cards.find((c) => c.id === editingCardId);
@@ -1849,14 +1874,10 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
               );
               const isAlreadyPaired = Boolean(existingPairCard);
 
-              const selectedDesignId = cardForm.frontDesignId || 'auto';
-              const autoPreviewDesign = storageService.getCardDesign(
-                selectedStudent?.level || 'มัธยมศึกษาตอนต้น'
-              );
-              const previewDesign =
-                (selectedDesignId !== 'auto' &&
-                  frontDesigns.find((d) => d.id === selectedDesignId)) ||
-                autoPreviewDesign;
+              const selectedDesignId = cardForm.frontDesignId || '';
+              const previewDesign = selectedDesignId
+                ? frontDesigns.find((d) => d.id === selectedDesignId) || null
+                : null;
 
               const virtualCard: PickupCard = {
                 id: editingCardId || `card_${cardForm.studentId || '00000'}_temp`,
@@ -1888,9 +1909,31 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                 }));
               };
 
+              const isStep1Complete = Boolean(
+                previewDesign &&
+                  cardForm.issueDate.trim() &&
+                  cardForm.expiryDate.trim() &&
+                  cardForm.expiryDate >= cardForm.issueDate
+              );
+              const missingFields: Array<{ label: string; step: 1 | 2 | 3 }> = [];
+              if (!previewDesign) {
+                missingFields.push({ label: 'แม่แบบหน้าบัตรสำหรับพิมพ์ (ขั้นที่ 1)', step: 1 });
+              }
+              if (!cardForm.issueDate.trim() || !cardForm.expiryDate.trim()) {
+                missingFields.push({ label: 'วันที่ออกบัตรและวันหมดอายุ (ขั้นที่ 1)', step: 1 });
+              } else if (cardForm.expiryDate < cardForm.issueDate) {
+                missingFields.push({ label: 'วันหมดอายุต้องไม่น้อยกว่าวันที่ออกบัตร (ขั้นที่ 1)', step: 1 });
+              }
+              if (!selectedGuardian) {
+                missingFields.push({ label: 'ข้อมูลผู้ปกครอง (ขั้นที่ 2)', step: 2 });
+              }
+              if (!selectedStudent) {
+                missingFields.push({ label: 'ข้อมูลนักเรียน (ขั้นที่ 3)', step: 3 });
+              }
+
               return (
                 <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
-                  {/* Clickable 3-Step Navigation Bar */}
+                  {/* Clickable 3-Step Navigation Bar: 1. Template -> 2. Guardian -> 3. Student */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <button
                       type="button"
@@ -1898,7 +1941,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                       className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
                         pairStep === 1
                           ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                          : selectedStudent
+                          : isStep1Complete
                           ? 'bg-emerald-50/70 text-emerald-900 border-emerald-200 hover:border-emerald-300'
                           : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                       }`}
@@ -1907,23 +1950,24 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                         className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
                           pairStep === 1
                             ? 'bg-white text-blue-600'
-                            : selectedStudent
+                            : isStep1Complete
                             ? 'bg-emerald-600 text-white'
                             : 'bg-slate-200 text-slate-600'
                         }`}
                       >
-                        {selectedStudent && pairStep !== 1 ? <Check className="w-4 h-4" /> : '1'}
+                        {isStep1Complete && pairStep !== 1 ? <Check className="w-4 h-4" /> : '1'}
                       </span>
                       <div className="min-w-0">
-                        <div className="text-xs font-bold">1. เลือกข้อมูลนักเรียน</div>
+                        <div className="text-xs font-bold">1. เลือกแม่แบบ / วันที่ออกบัตร</div>
                         <div
                           className={`text-[11px] truncate font-sarabun ${
                             pairStep === 1 ? 'text-blue-100' : 'text-slate-500'
                           }`}
                         >
-                          {selectedStudent
-                            ? `${selectedStudent.studentId} • ${selectedStudent.firstName} ${selectedStudent.lastName}`
-                            : 'ยังไม่ได้เลือกนักเรียน'}
+                          {previewDesign
+                            ? previewDesign.name || previewDesign.title
+                            : 'ยังไม่ได้เลือกแม่แบบ'}{' '}
+                          • หมดอายุ {formatThaiDateShort(cardForm.expiryDate)}
                         </div>
                       </div>
                     </button>
@@ -1970,29 +2014,32 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                       className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-3 ${
                         pairStep === 3
                           ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          : selectedStudent
+                          ? 'bg-emerald-50/70 text-emerald-900 border-emerald-200 hover:border-emerald-300'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       <span
                         className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
                           pairStep === 3
                             ? 'bg-white text-blue-600'
+                            : selectedStudent
+                            ? 'bg-emerald-600 text-white'
                             : 'bg-slate-200 text-slate-600'
                         }`}
                       >
-                        3
+                        {selectedStudent && pairStep !== 3 ? <Check className="w-4 h-4" /> : '3'}
                       </span>
                       <div className="min-w-0">
-                        <div className="text-xs font-bold">3. วันที่ออกบัตร / แม่แบบบัตร</div>
+                        <div className="text-xs font-bold">3. เลือกข้อมูลนักเรียน</div>
                         <div
                           className={`text-[11px] truncate font-sarabun ${
                             pairStep === 3 ? 'text-blue-100' : 'text-slate-500'
                           }`}
                         >
-                          {selectedDesignId === 'auto'
-                            ? 'แม่แบบอัตโนมัติ'
-                            : previewDesign.name || previewDesign.title}{' '}
-                          • หมดอายุ {formatThaiDateShort(cardForm.expiryDate)}
+                          {selectedStudent
+                            ? `${selectedStudent.studentId} • ${selectedStudent.firstName} ${selectedStudent.lastName}`
+                            : 'ยังไม่ได้เลือกนักเรียน'}
                         </div>
                       </div>
                     </button>
@@ -2001,165 +2048,116 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                     {/* Left Column: Active Step Content */}
                     <div className="lg:col-span-7 space-y-4">
-                      {/* STEP 1: SELECT STUDENT */}
+                      {/* STEP 1: SELECT TEMPLATE + ISSUE & EXPIRY DATES */}
                       {pairStep === 1 && (
-                        <div className="p-4 bg-white rounded-2xl border border-blue-200/80 shadow-xs space-y-3">
+                        <div className="p-4 bg-white rounded-2xl border border-blue-200/80 shadow-xs space-y-4">
                           <div className="flex items-center justify-between flex-wrap gap-2">
-                            <label className="text-xs font-bold text-slate-800 flex items-center gap-2">
-                              <GraduationCap className="w-4 h-4 text-blue-600" />
-                              <span>ขั้นตอนที่ 1: เลือกข้อมูลนักเรียน (Select Student)</span>
+                            <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                              <Layers className="w-4 h-4 text-blue-600" />
+                              <span>ขั้นตอนที่ 1: เลือกแม่แบบหน้าบัตร และกำหนดวันที่ออกบัตร</span>
                               <span className="text-red-500">*</span>
-                            </label>
-                            <span className="text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
-                              พบ {filteredStudentsForPair.length} / {students.length} คน
-                            </span>
+                            </div>
                           </div>
 
-                          {/* Search Input */}
-                          <div className="relative">
-                            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                            <input
-                              type="text"
-                              placeholder="พิมพ์ค้นหานักเรียนด้วยรหัส 5 หลัก, ชื่อ, นามสกุล, ชื่อเล่น หรือห้อง..."
-                              value={studentSearchQuery}
-                              onChange={(e) => setStudentSearchQuery(e.target.value)}
-                              className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun"
-                            />
-                            {studentSearchQuery && (
+                          {/* Template Selection for Printing */}
+                          <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200 space-y-2">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <label
+                                htmlFor="pair-card-template-select"
+                                className="text-xs font-bold text-slate-800 flex items-center gap-1.5"
+                              >
+                                <Layers className="w-4 h-4 text-blue-600" />
+                                <span>เลือกแม่แบบหน้าบัตรสำหรับพิมพ์</span>
+                                <span className="text-red-500">*</span>
+                              </label>
+                              <span
+                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+                                  previewDesign
+                                    ? 'text-blue-700 bg-blue-50 border-blue-200'
+                                    : 'text-rose-600 bg-rose-50 border-rose-200'
+                                }`}
+                              >
+                                {previewDesign
+                                  ? previewDesign.name || previewDesign.title
+                                  : 'ยังไม่ได้เลือกแม่แบบ'}
+                              </span>
+                            </div>
+
+                            <select
+                              id="pair-card-template-select"
+                              value={selectedDesignId}
+                              onChange={(e) =>
+                                setCardForm((prev) => ({
+                                  ...prev,
+                                  frontDesignId: e.target.value,
+                                }))
+                              }
+                              className="w-full px-3 py-2 text-xs font-medium bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun cursor-pointer"
+                            >
+                              <option value="">เลือกแม่แบบ</option>
+                              {frontDesigns.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  [{d.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'}] {d.name || d.title}
+                                  {d.isDefault ? ' ★ ค่าเริ่มต้น' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Issue & Expiry Dates */}
+                          <div className="space-y-3 pt-1 border-t border-slate-100">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                                <Calendar className="w-4 h-4 text-blue-600" />
+                                <span>วันที่ออกบัตรและวันหมดอายุ</span>
+                                <span className="text-red-500">*</span>
+                              </div>
                               <button
                                 type="button"
-                                onClick={() => setStudentSearchQuery('')}
-                                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                onClick={() =>
+                                  setCardForm((prev) => ({
+                                    ...prev,
+                                    expiryDate: calculateCardExpiryDate(
+                                      selectedStudent?.entryYear || currentAcademicYear
+                                    ),
+                                  }))
+                                }
+                                className="px-2.5 py-1 text-[11px] font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg cursor-pointer"
                               >
-                                <X className="w-3.5 h-3.5" />
+                                ตั้งหมดอายุ 30 เมษายน (3 ปีการศึกษา)
                               </button>
-                            )}
-                          </div>
+                            </div>
 
-                          {/* Clickable Student List */}
-                          <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-slate-50/40">
-                            {filteredStudentsForPair.length > 0 ? (
-                              filteredStudentsForPair.map((s) => {
-                                const isSelected = cardForm.studentId === s.studentId;
-                                return (
-                                  <div
-                                    key={s.studentId}
-                                    onClick={() => handleSelectStudent(s)}
-                                    className={`p-3 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
-                                      isSelected
-                                        ? 'bg-blue-50 border-l-4 border-l-blue-600'
-                                        : 'bg-white hover:bg-slate-50'
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                      <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-mono font-bold text-xs shrink-0">
-                                        {s.studentId}
-                                      </span>
-                                      <div className="min-w-0">
-                                        <div className="text-xs font-bold text-slate-800 truncate font-sarabun">
-                                          {s.prefix}
-                                          {s.firstName} {s.lastName}
-                                          {s.nickname && (
-                                            <span className="text-slate-500 font-normal ml-1">
-                                              ({s.nickname})
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="text-[11px] text-slate-500 font-sarabun">
-                                          {formatStudentGradeRoom(s, currentAcademicYear)} ({s.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'})
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {isSelected ? (
-                                      <span className="px-2 py-0.5 bg-blue-600 text-white rounded-md text-[10px] font-bold flex items-center gap-1 shrink-0">
-                                        <Check className="w-3 h-3" />
-                                        เลือกแล้ว
-                                      </span>
-                                    ) : (
-                                      <span className="text-[11px] text-blue-600 font-semibold shrink-0">
-                                        คลิกเพื่อเลือก
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              <div className="py-8 text-center text-xs text-slate-400">
-                                ไม่พบข้อมูลนักเรียนที่ค้นหา
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <ThaiDatePicker
+                                  label="วันที่ออกบัตร (ภาษาไทย พ.ศ.)"
+                                  value={cardForm.issueDate}
+                                  onChange={(val) => setCardForm({ ...cardForm, issueDate: val })}
+                                />
                               </div>
-                            )}
-                          </div>
-
-                          {/* Selected Student Info & Edit Option */}
-                          {selectedStudent ? (
-                            <div className="p-3.5 bg-gradient-to-r from-blue-50/90 to-indigo-50/50 rounded-xl border border-blue-200 space-y-2.5">
-                              <div className="flex items-start justify-between gap-2 flex-wrap">
-                                <div>
-                                  <div className="text-[11px] text-blue-600 font-semibold">
-                                    นักเรียนที่เลือก:
-                                  </div>
-                                  <div className="text-sm font-bold text-slate-800">
-                                    {selectedStudent.prefix}
-                                    {selectedStudent.firstName} {selectedStudent.lastName}{' '}
-                                    {selectedStudent.nickname && `(${selectedStudent.nickname})`}
-                                  </div>
-                                  <div className="text-[11px] text-slate-600 font-sarabun mt-0.5">
-                                    รหัส {selectedStudent.studentId} • {formatStudentGradeRoom(selectedStudent, currentAcademicYear)} ({selectedStudent.level}) • เข้าศึกษา พ.ศ. {selectedStudent.entryYear}
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenEditStudent(selectedStudent)}
-                                    className="px-2.5 py-1 text-[11px] font-semibold text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-1 cursor-pointer"
-                                  >
-                                    <Edit2 className="w-3 h-3" />
-                                    แก้ไขข้อมูลนักเรียน
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setCardForm((prev) => ({ ...prev, studentId: '' }))
-                                    }
-                                    className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer"
-                                  >
-                                    ยกเลิกการเลือก
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="pt-2 border-t border-blue-200/70 flex flex-wrap items-center justify-between text-[11px] gap-1.5">
-                                <span className="text-slate-500">
-                                  บัตรรับส่งที่ผูกไว้แล้ว ({existingStudentCards.length} ใบ):
-                                </span>
-                                {existingStudentCards.length > 0 ? (
-                                  <div className="flex flex-wrap gap-1">
-                                    {existingStudentCards.map((c) => {
-                                      const g = guardians.find((x) => x.id === c.guardianId);
-                                      return (
-                                        <span
-                                          key={c.id}
-                                          className="px-2 py-0.5 bg-white text-slate-700 border border-slate-200 rounded font-sarabun"
-                                        >
-                                          {g ? `${g.prefix}${g.firstName} (${g.relation})` : c.guardianId}
-                                        </span>
-                                      );
-                                    })}
-                                  </div>
-                                ) : (
-                                  <span className="text-emerald-700 font-medium">
-                                    ยังไม่มีบัตรในระบบ
-                                  </span>
-                                )}
+                              <div>
+                                <ThaiDatePicker
+                                  label="วันหมดอายุ (ค่าเริ่มต้นเดือนเมษายน)"
+                                  value={cardForm.expiryDate}
+                                  onChange={(val) => setCardForm({ ...cardForm, expiryDate: val })}
+                                  quickPreset3YearsEntryYear={
+                                    selectedStudent?.entryYear || currentAcademicYear
+                                  }
+                                />
                               </div>
                             </div>
-                          ) : (
-                            <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-center text-xs text-slate-500">
-                              กรุณาคลิกเลือกรายชื่อนักเรียนจากรายการด้านบน (ระบบจะไม่จับคู่ให้อัตโนมัติ)
+
+                            <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200/80 text-xs text-blue-900">
+                              <div className="font-semibold flex items-center gap-1.5 mb-0.5 text-blue-950">
+                                <CheckCircle className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                กฎอายุบัตร 3 ปีการศึกษา (สิ้นเดือนเมษายน):
+                              </div>
+                              <div className="text-[11px] text-blue-800 font-sarabun leading-relaxed">
+                                ระดับ ม.ต้น (ม.1 - ม.3) หรือ ม.ปลาย (ม.4 - ม.6) ตั้งวันหมดอายุเป็นเดือน เมษายน (30 เมษายน) และสามารถปรับแก้ไขวันที่ได้ตามต้องการ
+                              </div>
                             </div>
-                          )}
+                          </div>
 
                           <div className="flex justify-end pt-1">
                             <button
@@ -2371,224 +2369,208 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                               className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center gap-1.5 cursor-pointer"
                             >
                               <ArrowLeft className="w-3.5 h-3.5" />
-                              <span>ย้อนกลับ: แก้ไขนักเรียน</span>
+                              <span>ย้อนกลับ: แม่แบบ / วันที่</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => setPairStep(3)}
                               className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center gap-1.5 cursor-pointer"
                             >
-                              <span>ถัดไป: 3. กำหนดวันที่ออกบัตรและหมดอายุ</span>
+                              <span>ถัดไป: 3. เลือกข้อมูลนักเรียน</span>
                               <ArrowRight className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
                       )}
 
-                      {/* STEP 3: ISSUE & EXPIRY DATES (APRIL) + TEMPLATE SELECTION + BACK TO EDIT */}
+                      {/* STEP 3: SELECT STUDENT + SUMMARY */}
                       {pairStep === 3 && (
-                        <div className="p-4 bg-white rounded-2xl border border-blue-200/80 shadow-xs space-y-4">
+                        <div className="p-4 bg-white rounded-2xl border border-blue-200/80 shadow-xs space-y-3">
                           <div className="flex items-center justify-between flex-wrap gap-2">
-                            <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
-                              <Calendar className="w-4 h-4 text-blue-600" />
-                              <span>3. กำหนดวันที่ออกบัตรและเลือกแม่แบบสำหรับพิมพ์</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setCardForm((prev) => ({
-                                  ...prev,
-                                  expiryDate: calculateCardExpiryDate(
-                                    selectedStudent?.entryYear || currentAcademicYear
-                                  ),
-                                }))
-                              }
-                              className="px-2.5 py-1 text-[11px] font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg cursor-pointer"
-                            >
-                              ตั้งหมดอายุ 30 เมษายน (3 ปีการศึกษา)
-                            </button>
+                            <label className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                              <GraduationCap className="w-4 h-4 text-blue-600" />
+                              <span>ขั้นตอนที่ 3: เลือกข้อมูลนักเรียน (Select Student)</span>
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <span className="text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
+                              พบ {filteredStudentsForPair.length} / {students.length} คน
+                            </span>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                              <ThaiDatePicker
-                                label="วันที่ออกบัตร (ภาษาไทย พ.ศ.)"
-                                value={cardForm.issueDate}
-                                onChange={(val) => setCardForm({ ...cardForm, issueDate: val })}
-                              />
-                            </div>
-                            <div>
-                              <ThaiDatePicker
-                                label="วันหมดอายุ (ค่าเริ่มต้นเดือนเมษายน)"
-                                value={cardForm.expiryDate}
-                                onChange={(val) => setCardForm({ ...cardForm, expiryDate: val })}
-                                quickPreset3YearsEntryYear={
-                                  selectedStudent?.entryYear || currentAcademicYear
-                                }
-                              />
-                            </div>
-                          </div>
-
-                          <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200/80 text-xs text-blue-900">
-                            <div className="font-semibold flex items-center gap-1.5 mb-0.5 text-blue-950">
-                              <CheckCircle className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                              กฎอายุบัตร 3 ปีการศึกษา (สิ้นเดือนเมษายน):
-                            </div>
-                            <div className="text-[11px] text-blue-800 font-sarabun leading-relaxed">
-                              ระดับ ม.ต้น (ม.1 - ม.3) หรือ ม.ปลาย (ม.4 - ม.6) ตั้งวันหมดอายุเป็นเดือน เมษายน (30 เมษายน) และสามารถปรับแก้ไขวันที่ได้ตามต้องการ
-                            </div>
-                          </div>
-
-                          {/* Template Selection for Printing */}
-                          <div className="p-3.5 bg-slate-50/90 rounded-2xl border border-slate-200 space-y-2.5">
-                            <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                                <Layers className="w-4 h-4 text-blue-600" />
-                                <span>เลือกแม่แบบหน้าบัตรสำหรับพิมพ์</span>
-                              </div>
-                              <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
-                                {selectedDesignId === 'auto'
-                                  ? `อัตโนมัติ: ${autoPreviewDesign.name || autoPreviewDesign.title}`
-                                  : previewDesign.name || previewDesign.title}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-0.5">
-                              {/* Auto Option */}
+                          {/* Search Input */}
+                          <div className="relative">
+                            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                            <input
+                              type="text"
+                              placeholder="พิมพ์ค้นหานักเรียนด้วยรหัส 5 หลัก, ชื่อ, นามสกุล, ชื่อเล่น หรือห้อง..."
+                              value={studentSearchQuery}
+                              onChange={(e) => setStudentSearchQuery(e.target.value)}
+                              className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun"
+                            />
+                            {studentSearchQuery && (
                               <button
                                 type="button"
-                                onClick={() =>
-                                  setCardForm((prev) => ({ ...prev, frontDesignId: '' }))
-                                }
-                                className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
-                                  selectedDesignId === 'auto'
-                                    ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500 shadow-2xs'
-                                    : 'bg-white border-slate-200 hover:border-blue-300 hover:bg-slate-50'
-                                }`}
+                                onClick={() => setStudentSearchQuery('')}
+                                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
                               >
-                                <div className="shrink-0 rounded-md overflow-hidden border border-slate-200 bg-slate-100 pointer-events-none">
-                                  <CardPreview
-                                    design={autoPreviewDesign}
-                                    scale={0.21}
-                                    hideBorderAndShadow={true}
-                                  />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center justify-between gap-1">
-                                    <span className="text-xs font-bold text-slate-800 truncate">
-                                      อัตโนมัติตามระดับชั้น
-                                    </span>
-                                    {selectedDesignId === 'auto' && (
-                                      <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                                    )}
-                                  </div>
-                                  <div className="text-[10px] text-slate-500 font-sarabun truncate mt-0.5">
-                                    {autoPreviewDesign.name || autoPreviewDesign.title}
-                                  </div>
-                                  <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                                    ค่าเริ่มต้นอัตโนมัติ
-                                  </span>
-                                </div>
+                                <X className="w-3.5 h-3.5" />
                               </button>
-
-                              {/* All Front Card Templates */}
-                              {frontDesigns.map((tpl) => {
-                                const isSelected = selectedDesignId === tpl.id;
-                                return (
-                                  <button
-                                    key={tpl.id}
-                                    type="button"
-                                    onClick={() =>
-                                      setCardForm((prev) => ({ ...prev, frontDesignId: tpl.id }))
-                                    }
-                                    className={`p-2.5 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
-                                      isSelected
-                                        ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500 shadow-2xs'
-                                        : 'bg-white border-slate-200 hover:border-blue-300 hover:bg-slate-50'
-                                    }`}
-                                  >
-                                    <div className="shrink-0 rounded-md overflow-hidden border border-slate-200 bg-slate-100 pointer-events-none">
-                                      <CardPreview
-                                        design={tpl}
-                                        scale={0.21}
-                                        hideBorderAndShadow={true}
-                                      />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center justify-between gap-1">
-                                        <span className="text-xs font-bold text-slate-800 truncate">
-                                          {tpl.name || tpl.title}
-                                        </span>
-                                        {isSelected && (
-                                          <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                                        )}
-                                      </div>
-                                      <div className="text-[10px] text-slate-500 font-sarabun truncate mt-0.5">
-                                        {tpl.title}
-                                      </div>
-                                      <div className="flex items-center gap-1 mt-1 flex-wrap">
-                                        <span
-                                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                                            tpl.level === 'มัธยมศึกษาตอนต้น'
-                                              ? 'bg-blue-100 text-blue-800'
-                                              : 'bg-rose-100 text-rose-800'
-                                          }`}
-                                        >
-                                          {tpl.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'}
-                                        </span>
-                                        {tpl.isDefault && (
-                                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 inline-flex items-center gap-0.5">
-                                            <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
-                                            หลัก
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
+                            )}
                           </div>
 
-                          {/* Quick Summary with Go Back & Edit buttons */}
+                          {/* Clickable Student List */}
+                          <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-slate-50/40">
+                            {filteredStudentsForPair.length > 0 ? (
+                              filteredStudentsForPair.map((s) => {
+                                const isSelected = cardForm.studentId === s.studentId;
+                                return (
+                                  <div
+                                    key={s.studentId}
+                                    onClick={() => handleSelectStudent(s)}
+                                    className={`p-3 flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+                                      isSelected
+                                        ? 'bg-blue-50 border-l-4 border-l-blue-600'
+                                        : 'bg-white hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-mono font-bold text-xs shrink-0">
+                                        {s.studentId}
+                                      </span>
+                                      <div className="min-w-0">
+                                        <div className="text-xs font-bold text-slate-800 truncate font-sarabun">
+                                          {s.prefix}
+                                          {s.firstName} {s.lastName}
+                                          {s.nickname && (
+                                            <span className="text-slate-500 font-normal ml-1">
+                                              ({s.nickname})
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 font-sarabun">
+                                          {formatStudentGradeRoom(s, currentAcademicYear)} ({s.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'})
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {isSelected ? (
+                                      <span className="px-2 py-0.5 bg-blue-600 text-white rounded-md text-[10px] font-bold flex items-center gap-1 shrink-0">
+                                        <Check className="w-3 h-3" />
+                                        เลือกแล้ว
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-blue-600 font-semibold shrink-0">
+                                        คลิกเพื่อเลือก
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="py-8 text-center text-xs text-slate-400">
+                                ไม่พบข้อมูลนักเรียนที่ค้นหา
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Selected Student Info & Edit Option */}
+                          {selectedStudent ? (
+                            <div className="p-3.5 bg-gradient-to-r from-blue-50/90 to-indigo-50/50 rounded-xl border border-blue-200 space-y-2.5">
+                              <div className="flex items-start justify-between gap-2 flex-wrap">
+                                <div>
+                                  <div className="text-[11px] text-blue-600 font-semibold">
+                                    นักเรียนที่เลือก:
+                                  </div>
+                                  <div className="text-sm font-bold text-slate-800">
+                                    {selectedStudent.prefix}
+                                    {selectedStudent.firstName} {selectedStudent.lastName}{' '}
+                                    {selectedStudent.nickname && `(${selectedStudent.nickname})`}
+                                  </div>
+                                  <div className="text-[11px] text-slate-600 font-sarabun mt-0.5">
+                                    รหัส {selectedStudent.studentId} • {formatStudentGradeRoom(selectedStudent, currentAcademicYear)} ({selectedStudent.level}) • เข้าศึกษา พ.ศ. {selectedStudent.entryYear}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditStudent(selectedStudent)}
+                                    className="px-2.5 py-1 text-[11px] font-semibold text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                    แก้ไขข้อมูลนักเรียน
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setCardForm((prev) => ({ ...prev, studentId: '' }))
+                                    }
+                                    className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer"
+                                  >
+                                    ยกเลิกการเลือก
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="pt-2 border-t border-blue-200/70 flex flex-wrap items-center justify-between text-[11px] gap-1.5">
+                                <span className="text-slate-500">
+                                  บัตรรับส่งที่ผูกไว้แล้ว ({existingStudentCards.length} ใบ):
+                                </span>
+                                {existingStudentCards.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {existingStudentCards.map((c) => {
+                                      const g = guardians.find((x) => x.id === c.guardianId);
+                                      return (
+                                        <span
+                                          key={c.id}
+                                          className="px-2 py-0.5 bg-white text-slate-700 border border-slate-200 rounded font-sarabun"
+                                        >
+                                          {g ? `${g.prefix}${g.firstName} (${g.relation})` : c.guardianId}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span className="text-emerald-700 font-medium">
+                                    ยังไม่มีบัตรในระบบ
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-center text-xs text-slate-500">
+                              กรุณาคลิกเลือกรายชื่อนักเรียนจากรายการด้านบน (ระบบจะไม่จับคู่ให้อัตโนมัติ)
+                            </div>
+                          )}
+
+                          {/* Quick Summary of Step 1 & Step 2 with Go Back buttons */}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                             <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-1.5">
                               <div className="flex items-center justify-between">
                                 <span className="text-[11px] font-bold text-slate-500">
-                                  ข้อมูลนักเรียนที่เลือก
+                                  แม่แบบและวันที่บัตร
                                 </span>
-                                <div className="flex items-center gap-1.5">
-                                  {selectedStudent && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenEditStudent(selectedStudent)}
-                                      className="text-[11px] text-blue-600 hover:underline font-semibold cursor-pointer"
-                                    >
-                                      แก้ไขข้อมูล
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => setPairStep(1)}
-                                    className="text-[11px] text-slate-700 hover:text-blue-600 font-semibold underline cursor-pointer"
-                                  >
-                                    เปลี่ยนนักเรียน
-                                  </button>
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setPairStep(1)}
+                                  className="text-[11px] text-slate-700 hover:text-blue-600 font-semibold underline cursor-pointer"
+                                >
+                                  เปลี่ยนแม่แบบ / วันที่
+                                </button>
                               </div>
-                              {selectedStudent ? (
+                              {previewDesign ? (
                                 <div className="text-xs font-sarabun text-slate-800">
-                                  <div className="font-bold">
-                                    {selectedStudent.studentId} • {selectedStudent.prefix}
-                                    {selectedStudent.firstName} {selectedStudent.lastName}
+                                  <div className="font-bold truncate">
+                                    {previewDesign.name || previewDesign.title}
                                   </div>
                                   <div className="text-[11px] text-slate-500">
-                                    {formatStudentGradeRoom(selectedStudent, currentAcademicYear)} • {selectedStudent.level}
+                                    ออกบัตร {formatThaiDateShort(cardForm.issueDate)} • หมดอายุ{' '}
+                                    {formatThaiDateShort(cardForm.expiryDate)}
                                   </div>
                                 </div>
                               ) : (
                                 <div className="text-xs text-rose-600 font-semibold">
-                                  ยังไม่ได้เลือกนักเรียน
+                                  ยังไม่ได้เลือกแม่แบบหน้าบัตร
                                 </div>
                               )}
                             </div>
@@ -2643,14 +2625,14 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                               className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center gap-1.5 cursor-pointer"
                             >
                               <ArrowLeft className="w-3.5 h-3.5" />
-                              <span>ย้อนกลับ: แก้ไขผู้ปกครอง</span>
+                              <span>ย้อนกลับ: ข้อมูลผู้ปกครอง</span>
                             </button>
                           </div>
                         </div>
                       )}
                     </div>
 
-                    {/* Right Column: Live Card Preview & Duplicate Validation Notice */}
+                    {/* Right Column: Live Card Preview & Complete Validation Notice */}
                     <div className="lg:col-span-5 space-y-4">
                       {/* Live Card Preview Box */}
                       <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 flex flex-col items-center">
@@ -2666,7 +2648,15 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
 
                         {/* Interactive Card Canvas Wrapper */}
                         <div className="py-2 flex justify-center w-full overflow-hidden">
-                          {selectedStudent && selectedGuardian ? (
+                          {!previewDesign ? (
+                            <div className="w-[372px] max-w-full aspect-[85.6/54] bg-white border border-dashed border-slate-300 rounded-[10px] shadow-xs flex flex-col items-center justify-center text-slate-400 text-xs px-6 text-center gap-1.5">
+                              <CreditCard className="w-6 h-6 text-slate-300" />
+                              <span className="font-semibold text-slate-500">พื้นหลังว่างเปล่า</span>
+                              <span className="text-[11px] text-slate-400 font-sarabun">
+                                กรุณาเลือกแม่แบบหน้าบัตรสำหรับพิมพ์ (ขั้นที่ 1) เพื่อแสดงตัวอย่างบัตร
+                              </span>
+                            </div>
+                          ) : (
                             <CardPreview
                               design={previewDesign}
                               student={selectedStudent}
@@ -2674,65 +2664,42 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                               card={virtualCard}
                               scale={1.15}
                             />
-                          ) : (
-                            <div className="w-[324px] h-[204px] bg-slate-200/80 border-2 border-dashed border-slate-300 rounded-[10px] flex flex-col items-center justify-center text-slate-500 text-xs px-6 text-center gap-1.5">
-                              <CreditCard className="w-6 h-6 text-slate-400" />
-                              <span className="font-semibold">ยังไม่ได้จับคู่นักเรียนและผู้ปกครอง</span>
-                              <span className="text-[11px] text-slate-400 font-sarabun">
-                                กรุณาเลือกนักเรียน (ขั้นที่ 1) และผู้ปกครอง (ขั้นที่ 2) เพื่อดูตัวอย่างหน้าบัตร
-                              </span>
-                            </div>
                           )}
                         </div>
 
-                        <div className="w-full mt-3 pt-2.5 border-t border-slate-200 space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                              <Layers className="w-3.5 h-3.5 text-blue-600" />
-                              <span>แม่แบบหน้าบัตรสำหรับพิมพ์:</span>
-                            </label>
-                            <span className="text-[11px] text-slate-600 font-sarabun truncate max-w-[180px]">
-                              <strong>{previewDesign.name || previewDesign.title}</strong>
-                            </span>
-                          </div>
-                          <select
-                            aria-label="เลือกแม่แบบหน้าบัตรสำหรับพิมพ์"
-                            value={selectedDesignId}
-                            onChange={(e) =>
-                              setCardForm((prev) => ({
-                                ...prev,
-                                frontDesignId: e.target.value === 'auto' ? '' : e.target.value,
-                              }))
-                            }
-                            className="w-full px-2.5 py-1.5 text-xs font-medium bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun cursor-pointer"
-                          >
-                            <option value="auto">
-                              อัตโนมัติตามระดับชั้น ({autoPreviewDesign.name || autoPreviewDesign.title})
-                            </option>
-                            {frontDesigns.map((d) => (
-                              <option key={d.id} value={d.id}>
-                                [{d.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'}] {d.name || d.title}
-                                {d.isDefault ? ' ★ ค่าเริ่มต้น' : ''}
-                              </option>
-                            ))}
-                          </select>
+                        <div className="w-full mt-3 pt-2.5 border-t border-slate-200 text-center">
+                          <span className="text-[11px] text-slate-500 font-sarabun">
+                            แบบบัตรที่แสดง:{' '}
+                            <strong>
+                              {previewDesign
+                                ? previewDesign.name || previewDesign.title
+                                : 'ยังไม่ได้เลือกแม่แบบ (พื้นหลังว่างเปล่า)'}
+                            </strong>
+                          </span>
                         </div>
                       </div>
 
-                      {/* Duplicate / Ready Validation Status Card */}
-                      {!selectedStudent || !selectedGuardian ? (
-                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-slate-600 space-y-1">
+                      {/* Complete Form / Duplicate Validation Status Card */}
+                      {missingFields.length > 0 ? (
+                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-slate-600 space-y-2">
                           <div className="font-bold text-xs flex items-center gap-1.5 text-slate-700">
-                            <AlertCircle className="w-4 h-4 text-slate-500 shrink-0" />
-                            รอเลือกข้อมูลให้ครบ 2 ส่วน
+                            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+                            กรุณากรอกข้อมูลให้ครบก่อนบันทึก ({missingFields.length} รายการ)
                           </div>
-                          <p className="text-[11px] text-slate-500 font-sarabun">
-                            {!selectedStudent && !selectedGuardian
-                              ? 'กรุณาเลือกข้อมูลนักเรียนและผู้ปกครองก่อนทำการบันทึก'
-                              : !selectedStudent
-                              ? 'กรุณากลับไปขั้นตอนที่ 1 เพื่อเลือกข้อมูลนักเรียน'
-                              : 'กรุณาไปขั้นตอนที่ 2 เพื่อเลือกข้อมูลผู้ปกครอง'}
-                          </p>
+                          <ul className="space-y-1 text-[11px] text-slate-600 font-sarabun">
+                            {missingFields.map((item) => (
+                              <li key={item.label} className="flex items-center justify-between gap-2">
+                                <span>• ยังไม่ได้ระบุ: {item.label}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setPairStep(item.step)}
+                                  className="text-blue-600 hover:underline font-semibold shrink-0 cursor-pointer"
+                                >
+                                  ไปขั้นที่ {item.step}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
                         </div>
                       ) : isAlreadyPaired ? (
                         <div className="p-4 bg-amber-50 rounded-2xl border border-amber-300 text-amber-900 space-y-2 animate-in fade-in duration-100">
@@ -2741,7 +2708,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                             มีบัตรรับส่งคู่นี้ในระบบแล้ว (Duplicate Card)
                           </div>
                           <p className="text-[11px] text-amber-800 font-sarabun leading-relaxed">
-                            นักเรียนรหัส <strong>{selectedStudent.studentId}</strong> และผู้ปกครอง <strong>{selectedGuardian.firstName} {selectedGuardian.lastName}</strong> ได้ถูกออกบัตรรับส่งแล้ว (รหัสบัตร: <span className="font-mono">{existingPairCard?.id}</span> เมื่อ {formatThaiDateShort(existingPairCard?.issueDate || '')})
+                            นักเรียนรหัส <strong>{selectedStudent?.studentId}</strong> และผู้ปกครอง <strong>{selectedGuardian?.firstName} {selectedGuardian?.lastName}</strong> ได้ถูกออกบัตรรับส่งแล้ว (รหัสบัตร: <span className="font-mono">{existingPairCard?.id}</span> เมื่อ {formatThaiDateShort(existingPairCard?.issueDate || '')})
                           </p>
                           <div className="pt-2">
                             <button
@@ -2767,11 +2734,11 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                           <div className="font-bold text-xs flex items-center gap-1.5 text-emerald-950">
                             <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                             {editingCardId
-                              ? 'ข้อมูลพร้อมบันทึกการแก้ไขบัตร'
-                              : 'ข้อมูลสมบูรณ์ พร้อมออกบัตรรับส่งใหม่'}
+                              ? 'ข้อมูลครบถ้วน พร้อมบันทึกการแก้ไขบัตร'
+                              : 'ข้อมูลครบถ้วน พร้อมออกบัตรรับส่งใหม่'}
                           </div>
                           <p className="text-[11px] text-emerald-800 font-sarabun">
-                            สามารถกดแท็บขั้นตอนด้านบนเพื่อย้อนกลับไปแก้ไขนักเรียน ผู้ปกครอง หรือวันที่ได้ตลอดเวลา
+                            สามารถกดแท็บขั้นตอนด้านบนเพื่อย้อนกลับไปแก้ไขแม่แบบ วันที่ ผู้ปกครอง หรือนักเรียนได้ตลอดเวลา
                           </p>
                         </div>
                       )}
@@ -2785,23 +2752,49 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
             {(() => {
               const selectedStudent = students.find((s) => s.studentId === cardForm.studentId);
               const selectedGuardian = guardians.find((g) => g.id === cardForm.guardianId);
+              const selectedDesign = cardForm.frontDesignId
+                ? frontDesigns.find((d) => d.id === cardForm.frontDesignId)
+                : undefined;
+              const hasValidDates = Boolean(
+                cardForm.issueDate.trim() &&
+                  cardForm.expiryDate.trim() &&
+                  cardForm.expiryDate >= cardForm.issueDate
+              );
               const isAlreadyPaired = cards.some(
                 (c) =>
                   c.id !== editingCardId &&
                   c.studentId === cardForm.studentId &&
                   c.guardianId === cardForm.guardianId
               );
-              const canSubmit = Boolean(selectedStudent && selectedGuardian && !isAlreadyPaired);
+              const canSubmit = Boolean(
+                selectedDesign &&
+                  hasValidDates &&
+                  selectedGuardian &&
+                  selectedStudent &&
+                  !isAlreadyPaired
+              );
+
+              const missingLabels: string[] = [];
+              if (!selectedDesign) missingLabels.push('แม่แบบ');
+              if (!hasValidDates) missingLabels.push('วันที่');
+              if (!selectedGuardian) missingLabels.push('ผู้ปกครอง');
+              if (!selectedStudent) missingLabels.push('นักเรียน');
 
               return (
                 <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
                   <div className="text-xs text-slate-500 font-sarabun text-center sm:text-left">
-                    {selectedStudent && selectedGuardian ? (
+                    {canSubmit && selectedStudent && selectedGuardian && selectedDesign ? (
                       <span>
-                        จับคู่: <strong className="text-slate-800">รหัส {selectedStudent.studentId} ({selectedStudent.firstName})</strong> ↔ <strong className="text-blue-700">{selectedGuardian.prefix}{selectedGuardian.firstName} ({selectedGuardian.relation})</strong>
+                        ครบถ้วน: <strong className="text-slate-800">{selectedDesign.name || selectedDesign.title}</strong> • <strong className="text-blue-700">{selectedGuardian.prefix}{selectedGuardian.firstName}</strong> ↔ <strong className="text-slate-800">รหัส {selectedStudent.studentId} ({selectedStudent.firstName})</strong>
+                      </span>
+                    ) : isAlreadyPaired ? (
+                      <span className="text-amber-700 font-semibold">
+                        ไม่สามารถบันทึกได้ เนื่องจากนักเรียนและผู้ปกครองคู่นี้มีบัตรในระบบแล้ว
                       </span>
                     ) : (
-                      <span>ยังไม่ได้จับคู่ — กรุณาเลือกนักเรียนและผู้ปกครอง</span>
+                      <span>
+                        ข้อมูลยังไม่ครบ ({missingLabels.join(', ')}) — กรุณาเลือกให้ครบทุกขั้นตอนก่อนบันทึก
+                      </span>
                     )}
                   </div>
 
