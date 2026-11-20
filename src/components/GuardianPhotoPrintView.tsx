@@ -15,6 +15,7 @@ import { openPrintPreviewInNewTab } from '../utils/printPreview';
 import {
   DEFAULT_PHOTO_MARGINS_MM,
   PhotoPrintSheet,
+  getPhotoPrintSheetMetrics,
   paginatePhotoPrintAssets,
 } from './PhotoPrintSheet';
 import {
@@ -44,7 +45,23 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  Minus,
+  Plus,
+  Ruler,
 } from 'lucide-react';
+
+type PhotoSizePreset = '1in' | '1.5in' | '2in' | 'custom';
+
+const PHOTO_SIZE_PRESETS: Array<{
+  key: Exclude<PhotoSizePreset, 'custom'>;
+  label: string;
+  widthCm: number;
+  heightCm: number;
+}> = [
+  { key: '1in', label: '1 นิ้ว', widthCm: 2.5, heightCm: 3.0 },
+  { key: '1.5in', label: '1.5 นิ้ว', widthCm: 3.0, heightCm: 4.0 },
+  { key: '2in', label: '2 นิ้ว', widthCm: 4.0, heightCm: 5.0 },
+];
 
 interface GuardianPhotoPrintViewProps {
   onNotify: (msg: string, type?: 'success' | 'info' | 'error') => void;
@@ -77,8 +94,14 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [currentPage, setCurrentPage] = useState<number>(1);
 
-  // Selection for printing (preserves order)
+  // Selection & Per-Photo Quantity for printing (preserves order)
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [quantityById, setQuantityById] = useState<Record<string, number>>({});
+
+  // Photo Print Size Settings (in cm)
+  const [sizePreset, setSizePreset] = useState<PhotoSizePreset>('1.5in');
+  const [photoWidthCm, setPhotoWidthCm] = useState<number>(3.0);
+  const [photoHeightCm, setPhotoHeightCm] = useState<number>(4.0);
 
   // Print Layout Settings
   const [layout, setLayout] = useState<PhotoPrintLayout>('horizontal');
@@ -184,27 +207,98 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
     return { count, bytes };
   }, [assets, referencesByAssetId]);
 
-  const selectedAssets = useMemo(() => {
+  const selectedItems = useMemo(() => {
     const assetMap = new Map(assets.map((a) => [a.id, a]));
     return selectedIds
-      .map((id) => assetMap.get(id))
-      .filter((a): a is ImageAsset => Boolean(a));
-  }, [assets, selectedIds]);
+      .map((id) => {
+        const asset = assetMap.get(id);
+        if (!asset) return null;
+        const rawQty = quantityById[id];
+        const quantity =
+          typeof rawQty === 'number' && Number.isFinite(rawQty)
+            ? Math.max(1, Math.min(99, Math.floor(rawQty)))
+            : 1;
+        return { asset, quantity };
+      })
+      .filter((item): item is { asset: ImageAsset; quantity: number } => Boolean(item));
+  }, [assets, selectedIds, quantityById]);
+
+  const expandedSelectedAssets = useMemo(() => {
+    const expanded: ImageAsset[] = [];
+    for (const { asset, quantity } of selectedItems) {
+      for (let i = 0; i < quantity; i++) {
+        expanded.push(asset);
+      }
+    }
+    return expanded;
+  }, [selectedItems]);
 
   const effectiveGapMm = Math.max(0.5, Number.isFinite(gapMm) ? gapMm : 0.5);
+  const effectivePhotoWidthCm = Math.max(
+    1,
+    Math.min(20, Number.isFinite(photoWidthCm) && photoWidthCm > 0 ? photoWidthCm : 3)
+  );
+  const effectivePhotoHeightCm = Math.max(
+    1,
+    Math.min(26, Number.isFinite(photoHeightCm) && photoHeightCm > 0 ? photoHeightCm : 4)
+  );
+  const effectivePhotoWidthMm = Number((effectivePhotoWidthCm * 10).toFixed(2));
+  const effectivePhotoHeightMm = Number((effectivePhotoHeightCm * 10).toFixed(2));
 
-  const previewPages = useMemo(
+  const sheetMetrics = useMemo(
     () =>
-      paginatePhotoPrintAssets(
-        selectedAssets,
+      getPhotoPrintSheetMetrics(
         layout,
         paperOrientation,
         effectiveGapMm,
         showGuardianName,
-        marginsMm
+        marginsMm,
+        effectivePhotoWidthMm,
+        effectivePhotoHeightMm
       ),
-    [selectedAssets, layout, paperOrientation, effectiveGapMm, showGuardianName, marginsMm]
+    [
+      layout,
+      paperOrientation,
+      effectiveGapMm,
+      showGuardianName,
+      marginsMm,
+      effectivePhotoWidthMm,
+      effectivePhotoHeightMm,
+    ]
   );
+
+  const previewPages = useMemo(
+    () =>
+      paginatePhotoPrintAssets(
+        expandedSelectedAssets,
+        layout,
+        paperOrientation,
+        effectiveGapMm,
+        showGuardianName,
+        marginsMm,
+        effectivePhotoWidthMm,
+        effectivePhotoHeightMm
+      ),
+    [
+      expandedSelectedAssets,
+      layout,
+      paperOrientation,
+      effectiveGapMm,
+      showGuardianName,
+      marginsMm,
+      effectivePhotoWidthMm,
+      effectivePhotoHeightMm,
+    ]
+  );
+
+  const handleSelectSizePreset = (preset: PhotoSizePreset) => {
+    setSizePreset(preset);
+    const matched = PHOTO_SIZE_PRESETS.find((p) => p.key === preset);
+    if (matched) {
+      setPhotoWidthCm(matched.widthCm);
+      setPhotoHeightCm(matched.heightCm);
+    }
+  };
 
   const handleMarginChange = (side: keyof PhotoMarginsMm, rawValue: string) => {
     const num = Number(rawValue);
@@ -226,10 +320,33 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
     }
   };
 
+  const getAssetQuantity = (assetId: string): number => {
+    const raw = quantityById[assetId];
+    return typeof raw === 'number' && Number.isFinite(raw)
+      ? Math.max(1, Math.min(99, Math.floor(raw)))
+      : 1;
+  };
+
+  const setAssetQuantity = (assetId: string, nextQty: number) => {
+    const clamped = Number.isFinite(nextQty) ? Math.max(1, Math.min(99, Math.floor(nextQty))) : 1;
+    setSelectedIds((prev) => (prev.includes(assetId) ? prev : [...prev, assetId]));
+    setQuantityById((prev) => ({ ...prev, [assetId]: clamped }));
+  };
+
   const toggleSelectAsset = (assetId: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(assetId) ? prev.filter((id) => id !== assetId) : [...prev, assetId]
-    );
+    const isAlreadySelected = selectedIds.includes(assetId);
+    if (isAlreadySelected) {
+      setSelectedIds((prev) => prev.filter((id) => id !== assetId));
+      setQuantityById((prev) => {
+        if (!(assetId in prev)) return prev;
+        const next = { ...prev };
+        delete next[assetId];
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => [...prev, assetId]);
+      setQuantityById((prev) => ({ ...prev, [assetId]: prev[assetId] || 1 }));
+    }
   };
 
   const handleSelectAllFiltered = () => {
@@ -239,10 +356,18 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
       filteredIds.forEach((id) => merged.add(id));
       return Array.from(merged);
     });
+    setQuantityById((prev) => {
+      const next = { ...prev };
+      filteredIds.forEach((id) => {
+        if (!next[id]) next[id] = 1;
+      });
+      return next;
+    });
   };
 
   const handleClearSelection = () => {
     setSelectedIds([]);
+    setQuantityById({});
   };
 
   const moveSelectedItem = (index: number, direction: -1 | 1) => {
@@ -336,7 +461,7 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
   };
 
   const handleOpenPrintPreviewTab = () => {
-    if (selectedAssets.length === 0) {
+    if (expandedSelectedAssets.length === 0) {
       onNotify('กรุณาเลือกรูปผู้ปกครองอย่างน้อย 1 รูปก่อนสั่งพิมพ์', 'error');
       return;
     }
@@ -352,6 +477,8 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
       photoPrintConfig: {
         layout,
         paperOrientation,
+        photoWidthMm: effectivePhotoWidthMm,
+        photoHeightMm: effectivePhotoHeightMm,
         gapMm: effectiveGapMm,
         horizontalAlign,
         verticalAlign,
@@ -360,7 +487,7 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
         stripExtension,
         showGuardianName,
         fitMode,
-        assetIds: selectedAssets.map((a) => a.id),
+        assetIds: expandedSelectedAssets.map((a) => a.id),
       },
       operatorName: currentUser?.fullName || 'เจ้าหน้าที่ผู้พิมพ์',
     };
@@ -393,11 +520,13 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
           <div>
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
               <ImageIcon className="w-5 h-5 text-blue-600 shrink-0" />
-              <span>พิมพ์รูปผู้ปกครอง (30 × 40 มม.)</span>
+              <span>
+                พิมพ์รูปผู้ปกครอง ({effectivePhotoWidthCm} × {effectivePhotoHeightCm} ซม.)
+              </span>
             </h2>
             <p className="text-xs text-slate-500 font-sarabun mt-1.5 leading-relaxed">
-              เลือกรูปผู้ปกครองเพื่อจัดพิมพ์ขนาดจริง <strong>กว้าง 30 มม. × สูง 40 มม.</strong> พร้อมชื่อรูป
-              รองรับการจัดวาง <strong>1 แถวแนวตั้ง</strong> และ <strong>1 แถวนอน</strong> และลบรูปที่ไม่ได้ผูกข้อมูลได้ปลอดภัย
+              เลือกรูปผู้ปกครอง กำหนดขนาดพิมพ์ (<strong>1 นิ้ว</strong>, <strong>1.5 นิ้ว</strong>,{' '}
+              <strong>2 นิ้ว</strong> หรือกรอกเองเป็น <strong>ซม.</strong>) และระบุจำนวนรูปต่อรายการได้ตามต้องการ
             </p>
           </div>
 
@@ -425,7 +554,9 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
             </button>
 
             <span className="text-[11px] text-slate-500 font-sarabun">
-              เลือกพิมพ์แล้ว <strong className="text-blue-700 font-mono">{selectedAssets.length}</strong> รูป
+              เลือกแล้ว <strong className="text-slate-700 font-mono">{selectedItems.length}</strong> รายการ
+              {' '}• พิมพ์รวม{' '}
+              <strong className="text-blue-700 font-mono">{expandedSelectedAssets.length}</strong> รูป
             </span>
           </div>
         </div>
@@ -618,6 +749,7 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
                 {paginatedAssets.map((asset) => {
                   const isSelected = selectedIds.includes(asset.id);
                   const selectionOrder = selectedIds.indexOf(asset.id) + 1;
+                  const qty = getAssetQuantity(asset.id);
                   const refs = referencesByAssetId.get(asset.id) || [];
                   const isBound = refs.length > 0;
                   const imgSrc =
@@ -649,13 +781,18 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
                           <ImageIcon className="w-8 h-8 text-slate-300" />
                         )}
 
-                        {/* Selection Checkbox */}
-                        <div className="absolute top-2 left-2">
+                        {/* Selection Checkbox & Quantity Badge */}
+                        <div className="absolute top-2 left-2 flex items-center gap-1">
                           {isSelected ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-600 text-white text-[10px] font-bold shadow-xs">
-                              <Check className="w-3 h-3" />
-                              #{selectionOrder}
-                            </span>
+                            <>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-600 text-white text-[10px] font-bold shadow-xs">
+                                <Check className="w-3 h-3" />
+                                #{selectionOrder}
+                              </span>
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-lg bg-emerald-600 text-white text-[10px] font-mono font-bold shadow-xs">
+                                ×{qty}
+                              </span>
+                            </>
                           ) : (
                             <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-white/90 border border-slate-300 text-slate-400 group-hover:text-blue-600 shadow-2xs">
                               <Square className="w-3.5 h-3.5" />
@@ -702,36 +839,101 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
                           )}
                         </div>
 
-                        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-slate-100">
-                          <button
-                            type="button"
-                            onClick={() => toggleSelectAsset(asset.id)}
-                            className={`flex-1 py-1 px-2 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
-                              isSelected
-                                ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                            }`}
-                          >
-                            {isSelected ? 'ยกเลิกเลือก' : 'เลือกพิมพ์'}
-                          </button>
+                        {isSelected ? (
+                          <div className="space-y-1.5 pt-1 border-t border-slate-100">
+                            <div className="flex items-center justify-between gap-1 bg-blue-50/70 border border-blue-200/80 rounded-lg px-1.5 py-1">
+                              <span className="text-[10px] font-bold text-blue-900 font-sarabun">
+                                จำนวน
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={qty <= 1}
+                                  onClick={() => setAssetQuantity(asset.id, qty - 1)}
+                                  className="w-5 h-5 rounded bg-white border border-blue-200 text-blue-700 hover:bg-blue-100 disabled:opacity-40 flex items-center justify-center cursor-pointer"
+                                  title="ลดจำนวน"
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={99}
+                                  value={qty}
+                                  onChange={(e) => {
+                                    const parsed = parseInt(e.target.value, 10);
+                                    if (!Number.isNaN(parsed)) {
+                                      setAssetQuantity(asset.id, parsed);
+                                    }
+                                  }}
+                                  className="w-9 text-center py-0.5 text-[11px] font-mono font-bold bg-white border border-blue-200 rounded text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={qty >= 99}
+                                  onClick={() => setAssetQuantity(asset.id, qty + 1)}
+                                  className="w-5 h-5 rounded bg-white border border-blue-200 text-blue-700 hover:bg-blue-100 disabled:opacity-40 flex items-center justify-center cursor-pointer"
+                                  title="เพิ่มจำนวน"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
 
-                          <button
-                            type="button"
-                            onClick={() => handleRequestDeleteAsset(asset)}
-                            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
-                              isBound
-                                ? 'text-amber-600 border-amber-200 bg-amber-50/70 hover:bg-amber-100'
-                                : 'text-rose-600 border-rose-200 bg-rose-50/70 hover:bg-rose-100'
-                            }`}
-                            title={
-                              isBound
-                                ? 'รูปนี้ถูกผูกข้อมูลอยู่ (คลิกเพื่อดูรายละเอียด)'
-                                : 'ลบรูปภาพนี้ออกจากระบบ'
-                            }
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                            <div className="flex items-center justify-between gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleSelectAsset(asset.id)}
+                                className="flex-1 py-1 px-2 rounded-lg text-[11px] font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+                              >
+                                ยกเลิกเลือก
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRequestDeleteAsset(asset)}
+                                className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                                  isBound
+                                    ? 'text-amber-600 border-amber-200 bg-amber-50/70 hover:bg-amber-100'
+                                    : 'text-rose-600 border-rose-200 bg-rose-50/70 hover:bg-rose-100'
+                                }`}
+                                title={
+                                  isBound
+                                    ? 'รูปนี้ถูกผูกข้อมูลอยู่ (คลิกเพื่อดูรายละเอียด)'
+                                    : 'ลบรูปภาพนี้ออกจากระบบ'
+                                }
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => toggleSelectAsset(asset.id)}
+                              className="flex-1 py-1 px-2 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
+                            >
+                              เลือกพิมพ์
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRequestDeleteAsset(asset)}
+                              className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                                isBound
+                                  ? 'text-amber-600 border-amber-200 bg-amber-50/70 hover:bg-amber-100'
+                                  : 'text-rose-600 border-rose-200 bg-rose-50/70 hover:bg-rose-100'
+                              }`}
+                              title={
+                                isBound
+                                  ? 'รูปนี้ถูกผูกข้อมูลอยู่ (คลิกเพื่อดูรายละเอียด)'
+                                  : 'ลบรูปภาพนี้ออกจากระบบ'
+                              }
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -791,17 +993,19 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div>
                 <h3 className="text-sm font-bold text-slate-800">
-                  ตั้งค่าการพิมพ์และรูปแบบแถว
+                  ตั้งค่าการพิมพ์ ขนาดรูป และรูปแบบแถว
                 </h3>
                 <p className="text-[11px] text-slate-500 font-sarabun">
-                  ขนาดภาพพิมพ์จริง: กว้าง <strong>30 มม.</strong> × สูง <strong>40 มม.</strong> พร้อมชื่อรูป
+                  ขนาดภาพพิมพ์จริง: กว้าง <strong>{effectivePhotoWidthCm} ซม.</strong> × สูง{' '}
+                  <strong>{effectivePhotoHeightCm} ซม.</strong> ({effectivePhotoWidthMm} ×{' '}
+                  {effectivePhotoHeightMm} มม.) พร้อมชื่อรูป
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={selectedAssets.length === 0}
+                  disabled={expandedSelectedAssets.length === 0}
                   onClick={() => setIsFullscreenPreviewOpen(true)}
                   className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                 >
@@ -810,12 +1014,12 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  disabled={selectedAssets.length === 0}
+                  disabled={expandedSelectedAssets.length === 0}
                   onClick={handleOpenPrintPreviewTab}
                   className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                 >
                   <Printer className="w-4 h-4" />
-                  <span>หน้าตัวอย่าง / สั่งพิมพ์ ({selectedAssets.length})</span>
+                  <span>หน้าตัวอย่าง / สั่งพิมพ์ ({expandedSelectedAssets.length})</span>
                 </button>
               </div>
             </div>
@@ -837,11 +1041,135 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
               </div>
             )}
 
+            {/* Photo Size Selection (1 in, 1.5 in, 2 in, Custom cm) */}
+            <div className="p-3 bg-slate-50/90 rounded-xl border border-slate-200/80 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                  <Ruler className="w-3.5 h-3.5 text-blue-600" />
+                  <span>กำหนดขนาดรูปที่พิมพ์ (หน่วย: เซนติเมตร / ซม.)</span>
+                </label>
+                <span className="text-[11px] font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                  {effectivePhotoWidthCm} × {effectivePhotoHeightCm} ซม. ({effectivePhotoWidthMm} ×{' '}
+                  {effectivePhotoHeightMm} มม.)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                {PHOTO_SIZE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.key}
+                    type="button"
+                    onClick={() => handleSelectSizePreset(preset.key)}
+                    className={`py-1.5 px-2 rounded-xl border text-center transition-all cursor-pointer ${
+                      sizePreset === preset.key
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="text-xs font-bold">{preset.label}</div>
+                    <div
+                      className={`text-[10px] font-mono ${
+                        sizePreset === preset.key ? 'text-blue-100' : 'text-slate-400'
+                      }`}
+                    >
+                      {preset.widthCm} × {preset.heightCm} ซม.
+                    </div>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => handleSelectSizePreset('custom')}
+                  className={`py-1.5 px-2 rounded-xl border text-center transition-all cursor-pointer ${
+                    sizePreset === 'custom'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="text-xs font-bold">กรอกเอง</div>
+                  <div
+                    className={`text-[10px] font-sarabun ${
+                      sizePreset === 'custom' ? 'text-blue-100' : 'text-slate-400'
+                    }`}
+                  >
+                    ระบุเป็น ซม.
+                  </div>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-0.5">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="photo-width-cm"
+                    className="block text-[10px] font-semibold text-slate-600 font-sarabun"
+                  >
+                    ความกว้าง (ซม.)
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="photo-width-cm"
+                      type="number"
+                      min={1}
+                      max={20}
+                      step={0.1}
+                      value={photoWidthCm}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setSizePreset('custom');
+                        setPhotoWidthCm(Number.isFinite(val) ? val : 3);
+                      }}
+                      onBlur={() =>
+                        setPhotoWidthCm((prev) =>
+                          Math.max(1, Math.min(20, Number((prev || 3).toFixed(2))))
+                        )
+                      }
+                      className="w-full pl-2.5 pr-9 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-sarabun">
+                      cm
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label
+                    htmlFor="photo-height-cm"
+                    className="block text-[10px] font-semibold text-slate-600 font-sarabun"
+                  >
+                    ความสูง (ซม.)
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="photo-height-cm"
+                      type="number"
+                      min={1}
+                      max={26}
+                      step={0.1}
+                      value={photoHeightCm}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setSizePreset('custom');
+                        setPhotoHeightCm(Number.isFinite(val) ? val : 4);
+                      }}
+                      onBlur={() =>
+                        setPhotoHeightCm((prev) =>
+                          Math.max(1, Math.min(26, Number((prev || 4).toFixed(2))))
+                        )
+                      }
+                      className="w-full pl-2.5 pr-9 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-sarabun">
+                      cm
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Layout Mode, Orientation & Gap (>= 0.5mm) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="space-y-1.5">
                 <label className="block text-[11px] font-bold text-slate-700">
-                  เลือกรูปแบบการจัดเรียง
+                  เลือกรูปแบบการจัดเรียง (เต็มแถวขึ้นแถวใหม่)
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -854,7 +1182,7 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
                     }`}
                   >
                     <Rows3 className="w-4 h-4" />
-                    <span>1 แถวแนวตั้ง</span>
+                    <span>เรียงแนวตั้ง</span>
                   </button>
                   <button
                     type="button"
@@ -866,7 +1194,7 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
                     }`}
                   >
                     <Columns3 className="w-4 h-4" />
-                    <span>1 แถวนอน</span>
+                    <span>เรียงแนวนอน</span>
                   </button>
                 </div>
               </div>
@@ -1048,7 +1376,9 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
                   onChange={(e) => setShowCutLines(e.target.checked)}
                   className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span>เส้นประตัดขอบ 30×40 มม.</span>
+                <span>
+                  เส้นประตัดขอบ {effectivePhotoWidthCm}×{effectivePhotoHeightCm} ซม.
+                </span>
               </label>
               <label className="inline-flex items-center gap-1.5 cursor-pointer">
                 <input
@@ -1078,46 +1408,95 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
               </select>
             </div>
 
-            {/* Selected Order Chips */}
-            {selectedAssets.length > 0 && (
-              <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                <div className="text-[11px] font-bold text-slate-600">
-                  ลำดับรูปที่จะพิมพ์ ({selectedAssets.length} รูป • จัดวาง {previewPages.length} แผ่น):
+            {/* Selected Order & Per-Photo Quantity List */}
+            {selectedItems.length > 0 && (
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="text-[11px] font-bold text-slate-600">
+                    ลำดับและจำนวนรูปที่จะพิมพ์ ({selectedItems.length} รายการ • รวม{' '}
+                    <span className="text-blue-700">{expandedSelectedAssets.length} รูป</span> • จัดวาง{' '}
+                    {previewPages.length} แผ่น):
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
-                  {selectedAssets.map((asset, idx) => (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                  {selectedItems.map(({ asset, quantity }, idx) => (
                     <div
                       key={asset.id}
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg text-[11px] text-blue-900"
+                      className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-blue-50/80 border border-blue-200 rounded-xl text-[11px] text-blue-950"
                     >
-                      <span className="font-mono font-bold text-blue-700">#{idx + 1}</span>
-                      <span className="truncate max-w-[120px] font-sarabun">{asset.fileName}</span>
-                      <button
-                        type="button"
-                        disabled={idx === 0}
-                        onClick={() => moveSelectedItem(idx, -1)}
-                        className="p-0.5 text-slate-500 hover:text-blue-700 disabled:opacity-30 cursor-pointer"
-                        title="เลื่อนขึ้น"
-                      >
-                        <ArrowUp className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={idx === selectedAssets.length - 1}
-                        onClick={() => moveSelectedItem(idx, 1)}
-                        className="p-0.5 text-slate-500 hover:text-blue-700 disabled:opacity-30 cursor-pointer"
-                        title="เลื่อนลง"
-                      >
-                        <ArrowDown className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleSelectAsset(asset.id)}
-                        className="p-0.5 text-slate-400 hover:text-rose-600 cursor-pointer"
-                        title="เอาออก"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-mono font-bold text-blue-700 shrink-0">
+                          #{idx + 1}
+                        </span>
+                        <span className="truncate font-sarabun font-semibold" title={asset.fileName}>
+                          {asset.fileName}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="inline-flex items-center gap-1 bg-white border border-blue-200 rounded-lg px-1 py-0.5">
+                          <button
+                            type="button"
+                            disabled={quantity <= 1}
+                            onClick={() => setAssetQuantity(asset.id, quantity - 1)}
+                            className="p-0.5 text-blue-700 hover:bg-blue-50 rounded disabled:opacity-30 cursor-pointer"
+                            title="ลดจำนวน"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            max={99}
+                            value={quantity}
+                            onChange={(e) => {
+                              const parsed = parseInt(e.target.value, 10);
+                              if (!Number.isNaN(parsed)) {
+                                setAssetQuantity(asset.id, parsed);
+                              }
+                            }}
+                            className="w-9 text-center text-[11px] font-mono font-bold text-slate-800 focus:outline-none"
+                            aria-label={`จำนวนรูป ${asset.fileName}`}
+                          />
+                          <button
+                            type="button"
+                            disabled={quantity >= 99}
+                            onClick={() => setAssetQuantity(asset.id, quantity + 1)}
+                            className="p-0.5 text-blue-700 hover:bg-blue-50 rounded disabled:opacity-30 cursor-pointer"
+                            title="เพิ่มจำนวน"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                          <span className="text-[10px] text-slate-500 pr-0.5 font-sarabun">รูป</span>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => moveSelectedItem(idx, -1)}
+                          className="p-1 text-slate-500 hover:text-blue-700 disabled:opacity-30 cursor-pointer"
+                          title="เลื่อนขึ้น"
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === selectedItems.length - 1}
+                          onClick={() => moveSelectedItem(idx, 1)}
+                          className="p-1 text-slate-500 hover:text-blue-700 disabled:opacity-30 cursor-pointer"
+                          title="เลื่อนลง"
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleSelectAsset(asset.id)}
+                          className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                          title="เอาออก"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1127,9 +1506,12 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
 
           {/* Embedded Live Print Preview */}
           <div className="bg-slate-100 rounded-2xl border border-slate-200 overflow-hidden flex flex-col">
-            <div className="px-4 py-2.5 bg-white border-b border-slate-200 flex items-center justify-between gap-2">
-              <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
+            <div className="px-4 py-2.5 bg-white border-b border-slate-200 flex items-center justify-between gap-2 flex-wrap">
+              <div className="text-xs font-bold text-slate-800 flex items-center gap-2 flex-wrap">
                 <span>หน้าตัวอย่างการพิมพ์ (Print Preview)</span>
+                <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-mono">
+                  จุได้ {sheetMetrics.colsPerPage}×{sheetMetrics.rowsPerPage} = {sheetMetrics.perPage} รูป/แผ่น
+                </span>
                 {previewPages.length > 0 && (
                   <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-mono">
                     {previewPages.length} แผ่น A4
@@ -1165,22 +1547,25 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
             </div>
 
             <div className="p-4 overflow-auto max-h-[560px] flex justify-center">
-              {selectedAssets.length === 0 ? (
+              {expandedSelectedAssets.length === 0 ? (
                 <div className="py-16 text-center space-y-2 max-w-xs">
                   <Printer className="w-10 h-10 text-slate-300 mx-auto" />
                   <div className="text-xs font-bold text-slate-600">
                     ยังไม่ได้เลือกรูปสำหรับแสดงตัวอย่างการพิมพ์
                   </div>
                   <p className="text-[11px] text-slate-400 font-sarabun">
-                    คลิกเลือกรูปผู้ปกครองจากรายการด้านซ้ายเพื่อดูตัวอย่างการจัดวางขนาด 30 × 40 มม. แบบ{' '}
-                    {layout === 'vertical' ? '1 แถวแนวตั้ง' : '1 แถวนอน'}
+                    คลิกเลือกรูปผู้ปกครองจากรายการด้านซ้าย ระบุจำนวนรูปที่ต้องการเพื่อดูตัวอย่างขนาด{' '}
+                    {effectivePhotoWidthCm} × {effectivePhotoHeightCm} ซม. แบบ{' '}
+                    {layout === 'vertical' ? 'เรียงแนวตั้ง' : 'เรียงแนวนอน'}
                   </p>
                 </div>
               ) : (
                 <PhotoPrintSheet
-                  assets={selectedAssets}
+                  assets={expandedSelectedAssets}
                   layout={layout}
                   paperOrientation={paperOrientation}
+                  photoWidthMm={effectivePhotoWidthMm}
+                  photoHeightMm={effectivePhotoHeightMm}
                   gapMm={effectiveGapMm}
                   horizontalAlign={horizontalAlign}
                   verticalAlign={verticalAlign}
@@ -1205,10 +1590,11 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
           <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-slate-900">
-                หน้าตัวอย่างการพิมพ์รูปผู้ปกครอง — ขนาด 30 × 40 มม. ({layout === 'vertical' ? '1 แถวแนวตั้ง' : '1 แถวนอน'})
+                หน้าตัวอย่างการพิมพ์รูปผู้ปกครอง — ขนาด {effectivePhotoWidthCm} × {effectivePhotoHeightCm} ซม. ({layout === 'vertical' ? 'เรียงแนวตั้ง' : 'เรียงแนวนอน'})
               </h3>
               <p className="text-[11px] text-slate-500 font-sarabun">
-                จำนวน {selectedAssets.length} รูป • {previewPages.length} แผ่น A4{' '}
+                จำนวน {expandedSelectedAssets.length} รูป ({selectedItems.length} รายการ) • จุสูงสุด{' '}
+                {sheetMetrics.perPage} รูป/แผ่น • {previewPages.length} แผ่น A4{' '}
                 {paperOrientation === 'portrait' ? 'แนวตั้ง' : 'แนวนอน'}
               </p>
             </div>
@@ -1233,9 +1619,11 @@ export const GuardianPhotoPrintView: React.FC<GuardianPhotoPrintViewProps> = ({
 
           <div className="flex-1 overflow-auto p-6 flex justify-center">
             <PhotoPrintSheet
-              assets={selectedAssets}
+              assets={expandedSelectedAssets}
               layout={layout}
               paperOrientation={paperOrientation}
+              photoWidthMm={effectivePhotoWidthMm}
+              photoHeightMm={effectivePhotoHeightMm}
               gapMm={effectiveGapMm}
               horizontalAlign={horizontalAlign}
               verticalAlign={verticalAlign}

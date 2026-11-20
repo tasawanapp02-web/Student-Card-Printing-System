@@ -86,6 +86,10 @@ export const PrintPreviewTab: React.FC = () => {
       .filter((a): a is ImageAsset => Boolean(a));
     const pageW = photoCfg.paperOrientation === 'portrait' ? 210 : 297;
     const pageH = photoCfg.paperOrientation === 'portrait' ? 297 : 210;
+    const photoW = photoCfg.photoWidthMm ?? 30;
+    const photoH = photoCfg.photoHeightMm ?? 40;
+    const photoWCm = Number((photoW / 10).toFixed(2));
+    const photoHCm = Number((photoH / 10).toFixed(2));
 
     return (
       <div className="min-h-screen bg-slate-200/80 flex flex-col font-prompt">
@@ -121,10 +125,11 @@ export const PrintPreviewTab: React.FC = () => {
               </div>
               <div>
                 <h1 className="text-sm sm:text-base font-bold text-slate-900">
-                  หน้าตัวอย่างการพิมพ์รูปผู้ปกครอง (30 × 40 มม. พร้อมชื่อรูป)
+                  หน้าตัวอย่างการพิมพ์รูปผู้ปกครอง ({photoWCm} × {photoHCm} ซม. พร้อมชื่อรูป)
                 </h1>
                 <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                  รูปแบบ: {photoCfg.layout === 'vertical' ? '1 แถวแนวตั้ง' : '1 แถวนอน'} • กระดาษ A4{' '}
+                  ขนาด: {photoWCm} × {photoHCm} ซม. ({photoW} × {photoH} มม.) • รูปแบบ:{' '}
+                  {photoCfg.layout === 'vertical' ? 'เรียงแนวตั้ง' : 'เรียงแนวนอน'} • กระดาษ A4{' '}
                   {photoCfg.paperOrientation === 'portrait' ? 'แนวตั้ง (210×297 มม.)' : 'แนวนอน (297×210 มม.)'} •{' '}
                   {selectedAssets.length} รูป
                 </p>
@@ -181,7 +186,7 @@ export const PrintPreviewTab: React.FC = () => {
               <span>
                 คำแนะนำหน้าต่างพิมพ์: เลือกกระดาษ <strong>A4</strong> (
                 {photoCfg.paperOrientation === 'portrait' ? 'แนวตั้ง Portrait' : 'แนวนอน Landscape'}) • ขอบกระดาษ (Margins) ={' '}
-                <strong>None</strong> • มาตราส่วน (Scale) = <strong>100%</strong> เพื่อขนาดรูปจริง 30 × 40 มม.
+                <strong>None</strong> • มาตราส่วน (Scale) = <strong>100%</strong> เพื่อขนาดรูปจริง {photoWCm} × {photoHCm} ซม.
               </span>
             </div>
           </div>
@@ -199,6 +204,8 @@ export const PrintPreviewTab: React.FC = () => {
                   assets={selectedAssets}
                   layout={photoCfg.layout}
                   paperOrientation={photoCfg.paperOrientation}
+                  photoWidthMm={photoW}
+                  photoHeightMm={photoH}
                   gapMm={photoCfg.gapMm}
                   horizontalAlign={photoCfg.horizontalAlign}
                   verticalAlign={photoCfg.verticalAlign}
@@ -217,6 +224,8 @@ export const PrintPreviewTab: React.FC = () => {
                   assets={selectedAssets}
                   layout={photoCfg.layout}
                   paperOrientation={photoCfg.paperOrientation}
+                  photoWidthMm={photoW}
+                  photoHeightMm={photoH}
                   gapMm={photoCfg.gapMm}
                   horizontalAlign={photoCfg.horizontalAlign}
                   verticalAlign={photoCfg.verticalAlign}

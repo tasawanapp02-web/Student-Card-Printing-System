@@ -235,6 +235,8 @@ export interface PhotoMarginsMm {
 export interface PhotoPrintConfigPayload {
   layout: PhotoPrintLayout;
   paperOrientation: 'portrait' | 'landscape';
+  photoWidthMm?: number;
+  photoHeightMm?: number;
   gapMm: number;
   horizontalAlign?: PhotoHorizontalAlign;
   verticalAlign?: PhotoVerticalAlign;
