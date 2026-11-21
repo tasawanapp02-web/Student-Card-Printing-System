@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   PickupCard,
   Student,
@@ -24,7 +24,10 @@ import {
   ExternalLink,
   Layers,
   RotateCw,
+  Edit2,
 } from 'lucide-react';
+
+const PVC_FRONT_SLOTS_SESSION_KEY = 'spc_pvc_front_slots_v1';
 
 interface PvcPrintViewProps {
   currentUser: UserAccount | null;
@@ -32,6 +35,7 @@ interface PvcPrintViewProps {
   reprintCardId?: string | null;
   reprintDesignId?: string | null;
   onReprintLoaded?: () => void;
+  onEditCard?: (cardId: string) => void;
 }
 
 export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
@@ -40,6 +44,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
   reprintCardId,
   reprintDesignId,
   onReprintLoaded,
+  onEditCard,
 }) => {
   const [currentAcademicYear, setCurrentAcademicYear] = useState<number>(() =>
     storageService.getAcademicYear() || getCurrentBuddhistYear()
@@ -63,10 +68,31 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
     });
   }, []);
 
-  const [card1Id, setCard1Id] = useState<string>('');
-  const [card2Id, setCard2Id] = useState<string>('');
-  const [slot1DesignId, setSlot1DesignId] = useState<string>('auto');
-  const [slot2DesignId, setSlot2DesignId] = useState<string>('auto');
+  const readSavedSlots = (): { initialized: boolean; card1Id: string; card2Id: string } => {
+    try {
+      const raw = sessionStorage.getItem(PVC_FRONT_SLOTS_SESSION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.initialized) {
+          return {
+            initialized: true,
+            card1Id: typeof parsed.card1Id === 'string' ? parsed.card1Id : '',
+            card2Id: typeof parsed.card2Id === 'string' ? parsed.card2Id : '',
+          };
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return { initialized: false, card1Id: '', card2Id: '' };
+  };
+
+  const initialSlots = readSavedSlots();
+  const hasInitializedSlotsRef = useRef<boolean>(initialSlots.initialized);
+
+  const [card1Id, setCard1Id] = useState<string>(initialSlots.card1Id);
+  const [card2Id, setCard2Id] = useState<string>(initialSlots.card2Id);
+  const [overrideDesign1Id, setOverrideDesign1Id] = useState<string | null>(null);
 
   const [enableSlot1, setEnableSlot1] = useState<boolean>(true);
   const [enableSlot2, setEnableSlot2] = useState<boolean>(true);
@@ -79,53 +105,65 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
   const [activePickerSlot, setActivePickerSlot] = useState<1 | 2 | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const resolveCardSlotDesign = (card?: PickupCard, overrideDesignId?: string | null): string => {
-    const candidate = overrideDesignId || card?.frontDesignId;
-    if (candidate && frontDesigns.some((d) => d.id === candidate)) {
-      return candidate;
+  // Persist selected tray slots in sessionStorage across tab switches
+  useEffect(() => {
+    if (!hasInitializedSlotsRef.current) return;
+    try {
+      sessionStorage.setItem(
+        PVC_FRONT_SLOTS_SESSION_KEY,
+        JSON.stringify({ initialized: true, card1Id, card2Id })
+      );
+    } catch {
+      // ignore
     }
-    return 'auto';
-  };
+  }, [card1Id, card2Id]);
 
-  // Handle incoming Reprint / Send-to-tray request
+  // Handle incoming Reprint / Send-to-tray request or initial pre-populate
   useEffect(() => {
     if (reprintCardId) {
-      const targetCard = cards.find((c) => c.id === reprintCardId);
+      hasInitializedSlotsRef.current = true;
       setCard1Id(reprintCardId);
-      setSlot1DesignId(resolveCardSlotDesign(targetCard, reprintDesignId));
+      setOverrideDesign1Id(reprintDesignId || null);
       setEnableSlot1(true);
       onNotify('ดึงข้อมูลบัตรสำหรับพิมพ์ซ้ำ (Reprint) ลงในถาดพิมพ์เรียบร้อยแล้ว', 'info');
       if (onReprintLoaded) {
         onReprintLoaded();
       }
-    } else if (cards.length > 0 && !card1Id) {
-      // Auto pre-populate initial slots for quick testing
+    } else if (cards.length > 0 && !hasInitializedSlotsRef.current) {
+      // Auto pre-populate initial slots once for quick testing
+      hasInitializedSlotsRef.current = true;
       const firstCard = cards[0];
       setCard1Id(firstCard?.id || '');
-      setSlot1DesignId(resolveCardSlotDesign(firstCard));
+      setOverrideDesign1Id(null);
       if (cards.length > 1) {
         const secondCard = cards[1];
         setCard2Id(secondCard?.id || '');
-        setSlot2DesignId(resolveCardSlotDesign(secondCard));
       }
     }
   }, [reprintCardId, reprintDesignId, cards]);
 
+  const resolveDesignForCard = (
+    card?: PickupCard,
+    student?: Student,
+    overrideDesignId?: string | null
+  ) => {
+    const candidateId = overrideDesignId || card?.frontDesignId;
+    if (candidateId) {
+      const matched = frontDesigns.find((d) => d.id === candidateId);
+      if (matched) return matched;
+    }
+    return storageService.getCardDesign(student?.level || 'มัธยมศึกษาตอนต้น');
+  };
+
   const card1 = cards.find((c) => c.id === card1Id);
   const student1 = card1 ? students.find((s) => s.studentId === card1.studentId) : undefined;
   const guardian1 = card1 ? guardians.find((g) => g.id === card1.guardianId) : undefined;
-  const autoDesign1 = storageService.getCardDesign(student1?.level || 'มัธยมศึกษาตอนต้น');
-  const design1 =
-    (slot1DesignId !== 'auto' && frontDesigns.find((d) => d.id === slot1DesignId)) ||
-    autoDesign1;
+  const design1 = resolveDesignForCard(card1, student1, overrideDesign1Id);
 
   const card2 = cards.find((c) => c.id === card2Id);
   const student2 = card2 ? students.find((s) => s.studentId === card2.studentId) : undefined;
   const guardian2 = card2 ? guardians.find((g) => g.id === card2.guardianId) : undefined;
-  const autoDesign2 = storageService.getCardDesign(student2?.level || 'มัธยมศึกษาตอนต้น');
-  const design2 =
-    (slot2DesignId !== 'auto' && frontDesigns.find((d) => d.id === slot2DesignId)) ||
-    autoDesign2;
+  const design2 = resolveDesignForCard(card2, student2);
 
   // Calibration save
   const handleSaveCalibration = () => {
@@ -165,7 +203,6 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
       return;
     }
     setCard2Id(card1Id);
-    setSlot2DesignId(slot1DesignId);
     setEnableSlot2(true);
     onNotify('คัดลอกบัตรช่องที่ 1 ไปยังช่องที่ 2 เรียบร้อยแล้ว', 'success');
   };
@@ -352,7 +389,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                       นักเรียน: {student1.prefix}
                       {student1.firstName} ({student1.nickname})
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-mono font-bold text-[10px]">
                         รหัส {student1.studentId}
                       </span>
@@ -365,17 +402,24 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                         </span>
                       )}
                     </div>
+                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-blue-700 font-semibold font-sarabun truncate">
+                      <Layers className="w-3 h-3 shrink-0" />
+                      <span className="truncate">
+                        รูปแบบหน้าบัตร: {design1.name || design1.title}
+                        {!card1.frontDesignId && !overrideDesign1Id && ' (ตามระดับชั้น)'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   <button
                     type="button"
                     onClick={() => {
                       setActivePickerSlot(1);
                       setSearchQuery('');
                     }}
-                    className="flex-1 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                    className="flex-1 min-w-[130px] py-1.5 px-2.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <Search className="w-3.5 h-3.5" />
                     เปลี่ยนบัตรใบที่ 1
@@ -384,11 +428,23 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                   <button
                     type="button"
                     onClick={handleDuplicateSlot1}
-                    className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center gap-1.5 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
                     title="คัดลอกบัตรนี้ไปยังใบที่ 2"
                   >
                     <Copy className="w-3.5 h-3.5" />
                     คัดลอกลงใบที่ 2
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCard1Id('');
+                      setOverrideDesign1Id(null);
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    ล้างช่อง 1
                   </button>
                 </div>
               </div>
@@ -401,47 +457,31 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                     setActivePickerSlot(1);
                     setSearchQuery('');
                   }}
-                  className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs"
+                  className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs cursor-pointer"
                 >
                   เลือกบัตรรับส่งนักเรียน
                 </button>
               </div>
             )}
-            {/* Slot 1 Front Card Template Selector */}
-            <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                  <Layers className="w-3.5 h-3.5 text-blue-600" />
-                  รูปแบบหน้าบัตร (ช่อง 1)
-                </label>
-                {slot1DesignId !== slot2DesignId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSlot2DesignId(slot1DesignId);
-                      onNotify('ใช้รูปแบบหน้าบัตรเดียวกับช่องที่ 1 ให้ช่องที่ 2 แล้ว', 'info');
-                    }}
-                    className="text-[10px] font-semibold text-blue-600 hover:underline cursor-pointer"
-                  >
-                    ใช้แบบเดียวกันในช่อง 2
-                  </button>
-                )}
-              </div>
-              <select
-                value={slot1DesignId}
-                onChange={(e) => setSlot1DesignId(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun"
+            {/* Slot 1 Edit Guardian Card Button */}
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={!card1}
+                onClick={() => {
+                  if (card1 && onEditCard) {
+                    onEditCard(card1.id);
+                  }
+                }}
+                className={`w-full py-2 px-3 text-xs font-semibold rounded-xl border flex items-center justify-center gap-1.5 transition-colors ${
+                  card1
+                    ? 'text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-200 cursor-pointer'
+                    : 'text-slate-400 bg-slate-100 border-slate-200 cursor-not-allowed'
+                }`}
               >
-                <option value="auto">
-                  อัตโนมัติตามระดับชั้น ({autoDesign1.name || autoDesign1.title})
-                </option>
-                {frontDesigns.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    [{d.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'}] {d.name || d.title}
-                    {d.isDefault ? ' ★ ค่าเริ่มต้น' : ''}
-                  </option>
-                ))}
-              </select>
+                <Edit2 className="w-3.5 h-3.5" />
+                แก้ไขบัตรผู้ปกครอง
+              </button>
             </div>
           </div>
 
@@ -497,7 +537,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                       นักเรียน: {student2.prefix}
                       {student2.firstName} ({student2.nickname})
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-mono font-bold text-[10px]">
                         รหัส {student2.studentId}
                       </span>
@@ -510,17 +550,24 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                         </span>
                       )}
                     </div>
+                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-blue-700 font-semibold font-sarabun truncate">
+                      <Layers className="w-3 h-3 shrink-0" />
+                      <span className="truncate">
+                        รูปแบบหน้าบัตร: {design2.name || design2.title}
+                        {!card2.frontDesignId && ' (ตามระดับชั้น)'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   <button
                     type="button"
                     onClick={() => {
                       setActivePickerSlot(2);
                       setSearchQuery('');
                     }}
-                    className="flex-1 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                    className="flex-1 py-1.5 px-2.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <Search className="w-3.5 h-3.5" />
                     เปลี่ยนบัตรใบที่ 2
@@ -529,7 +576,7 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setCard2Id('')}
-                    className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg flex items-center gap-1 transition-colors"
+                    className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     ล้างช่อง 2
@@ -545,33 +592,31 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                     setActivePickerSlot(2);
                     setSearchQuery('');
                   }}
-                  className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs"
+                  className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs cursor-pointer"
                 >
                   เลือกบัตรรับส่งนักเรียน
                 </button>
               </div>
             )}
-            {/* Slot 2 Front Card Template Selector */}
-            <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
-              <label className="block text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                <Layers className="w-3.5 h-3.5 text-blue-600" />
-                รูปแบบหน้าบัตร (ช่อง 2)
-              </label>
-              <select
-                value={slot2DesignId}
-                onChange={(e) => setSlot2DesignId(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-sarabun"
+            {/* Slot 2 Edit Guardian Card Button */}
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={!card2}
+                onClick={() => {
+                  if (card2 && onEditCard) {
+                    onEditCard(card2.id);
+                  }
+                }}
+                className={`w-full py-2 px-3 text-xs font-semibold rounded-xl border flex items-center justify-center gap-1.5 transition-colors ${
+                  card2
+                    ? 'text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-200 cursor-pointer'
+                    : 'text-slate-400 bg-slate-100 border-slate-200 cursor-not-allowed'
+                }`}
               >
-                <option value="auto">
-                  อัตโนมัติตามระดับชั้น ({autoDesign2.name || autoDesign2.title})
-                </option>
-                {frontDesigns.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    [{d.level === 'มัธยมศึกษาตอนต้น' ? 'ม.ต้น' : 'ม.ปลาย'}] {d.name || d.title}
-                    {d.isDefault ? ' ★ ค่าเริ่มต้น' : ''}
-                  </option>
-                ))}
-              </select>
+                <Edit2 className="w-3.5 h-3.5" />
+                แก้ไขบัตรผู้ปกครอง
+              </button>
             </div>
           </div>
 
@@ -757,14 +802,12 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                     <div
                       key={c.id}
                       onClick={() => {
-                        const preferredDesign = resolveCardSlotDesign(c);
                         if (activePickerSlot === 1) {
                           setCard1Id(c.id);
-                          setSlot1DesignId(preferredDesign);
+                          setOverrideDesign1Id(null);
                           setEnableSlot1(true);
                         } else {
                           setCard2Id(c.id);
-                          setSlot2DesignId(preferredDesign);
                           setEnableSlot2(true);
                         }
                         setActivePickerSlot(null);

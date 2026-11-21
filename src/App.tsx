@@ -245,6 +245,10 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
                   setReprintCardId(null);
                   setReprintDesignId(null);
                 }}
+                onEditCard={(cardId) => {
+                  setEditCardTarget({ cardId, nonce: Date.now() });
+                  setActiveTab('cards');
+                }}
               />
             )}
 
