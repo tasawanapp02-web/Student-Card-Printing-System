@@ -369,7 +369,6 @@ export const SYSTEM_ADMIN_RECOVERY: UserAccount & { email: string } = {
   id: 'user_admin',
   username: 'admin',
   email: 'admin@pcccr.ac.th',
-  password: '213894120',
   fullName: 'ผู้ดูแลระบบ',
   role: 'admin',
   position: 'ผู้ดูแลระบบ',
@@ -377,6 +376,6 @@ export const SYSTEM_ADMIN_RECOVERY: UserAccount & { email: string } = {
   isActive: true,
 };
 
-export const INITIAL_USERS: UserAccount[] = [SYSTEM_ADMIN_RECOVERY];
+export const INITIAL_USERS: UserAccount[] = [];
 
 export const INITIAL_PRINT_HISTORY: PrintHistoryItem[] = [];

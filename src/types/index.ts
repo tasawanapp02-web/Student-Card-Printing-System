@@ -9,7 +9,6 @@ export interface UserAccount {
   photoURL?: string;
   authMethod?: 'google' | 'password';
   username: string;
-  password?: string;
   fullName: string;
   role: UserRole;
   position: string;

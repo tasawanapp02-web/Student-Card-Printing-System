@@ -323,7 +323,19 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       return;
     }
 
-    if (!formData.firstName.trim() || !formData.lastName.trim()) {
+    const stripCtrl = (val: string, maxLen: number) =>
+      val.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, maxLen);
+
+    const cleanFirstName = stripCtrl(formData.firstName, 120);
+    const cleanLastName = stripCtrl(formData.lastName, 120);
+    const cleanNickname = stripCtrl(formData.nickname, 80);
+    const cleanClassroom = stripCtrl(formData.classroom, 30) || '1';
+    const rawYear = Number(formData.entryYear);
+    const cleanEntryYear = Number.isFinite(rawYear)
+      ? Math.min(2700, Math.max(2500, Math.round(rawYear)))
+      : currentAcademicYear;
+
+    if (!cleanFirstName || !cleanLastName) {
       onNotify('กรุณาระบุชื่อและนามสกุลนักเรียน', 'error');
       return;
     }
@@ -342,13 +354,13 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         s.studentId === editingStudent.studentId
           ? {
               ...s,
-              prefix: formData.prefix,
-              firstName: formData.firstName.trim(),
-              lastName: formData.lastName.trim(),
-              nickname: formData.nickname.trim(),
+              prefix: stripCtrl(formData.prefix, 50),
+              firstName: cleanFirstName,
+              lastName: cleanLastName,
+              nickname: cleanNickname,
               level: formData.level,
-              classroom: formData.classroom.trim(),
-              entryYear: Number(formData.entryYear),
+              classroom: cleanClassroom,
+              entryYear: cleanEntryYear,
               updatedAt: nowIso,
             }
           : s
@@ -357,13 +369,13 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     } else {
       const newStudent: Student = {
         studentId: cleanId,
-        prefix: formData.prefix,
-        firstName: formData.firstName.trim(),
-        lastName: formData.lastName.trim(),
-        nickname: formData.nickname.trim(),
+        prefix: stripCtrl(formData.prefix, 50),
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
+        nickname: cleanNickname,
         level: formData.level,
-        classroom: formData.classroom.trim(),
-        entryYear: Number(formData.entryYear),
+        classroom: cleanClassroom,
+        entryYear: cleanEntryYear,
         createdAt: nowIso,
         updatedAt: nowIso,
       };
@@ -388,11 +400,13 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
 
   // CSV Parsing supporting exact headers: รหัสนักเรียน,คำนำหน้า,ชื่อ,นามสกุล,ชื่อเล่น,ระดับชั้น,ห้อง
   const handleParseCsv = (text: string) => {
-    setCsvText(text);
-    const rawLines = text
+    const safeText = text.slice(0, 2 * 1024 * 1024); // Guard against oversized pastes (> 2 MB)
+    setCsvText(safeText);
+    const rawLines = safeText
       .split(/\r?\n/)
       .map((l) => l.trim())
-      .filter((l) => l.length > 0);
+      .filter((l) => l.length > 0)
+      .slice(0, 5000);
 
     if (rawLines.length === 0) {
       setCsvParsePreview([]);
@@ -400,6 +414,8 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     }
 
     const parsed: Student[] = [];
+    const cleanField = (val: string, maxLen: number) =>
+      val.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, maxLen);
 
     // Helper to split a line by tab or comma
     const splitLine = (line: string): string[] => {
@@ -469,12 +485,12 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         }
         const studentId = rawId;
 
-        const prefix = cols[prefixIdx] || 'เด็กชาย';
-        const firstName = cols[firstNameIdx] || '';
-        const lastName = cols[lastNameIdx] || '';
-        const nickname = cols[nicknameIdx] || '';
-        const rawLevel = cols[levelIdx] || 'ม.1';
-        let classroom = cols[roomIdx] || '1';
+        const prefix = cleanField(cols[prefixIdx] || 'เด็กชาย', 50) || 'เด็กชาย';
+        const firstName = cleanField(cols[firstNameIdx] || '', 120);
+        const lastName = cleanField(cols[lastNameIdx] || '', 120);
+        const nickname = cleanField(cols[nicknameIdx] || '', 80);
+        const rawLevel = cleanField(cols[levelIdx] || 'ม.1', 40);
+        let classroom = cleanField(cols[roomIdx] || '1', 30) || '1';
 
         // Normalize level and compute entryYear from currentAcademicYear
         let level: EducationLevel = 'มัธยมศึกษาตอนต้น';
@@ -511,7 +527,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
         // If explicit year is given
         if (cols[yearIdx]) {
           const parsedYear = parseInt(cols[yearIdx], 10);
-          if (!isNaN(parsedYear) && parsedYear >= 2500) {
+          if (!isNaN(parsedYear) && parsedYear >= 2500 && parsedYear <= 2700) {
             entryYear = parsedYear;
           }
         }
@@ -521,7 +537,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           const gradeNum = level === 'มัธยมศึกษาตอนต้น'
             ? (currentAcademicYear - entryYear + 1)
             : (currentAcademicYear - entryYear + 4);
-          classroom = `${gradeNum}/${classroom}`;
+          classroom = `${gradeNum}/${classroom}`.slice(0, 30);
         }
 
         if (/^\d{5}$/.test(studentId) && firstName) {
@@ -529,7 +545,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
             studentId,
             prefix,
             firstName,
-            lastName,
+            lastName: lastName || '-',
             nickname,
             level,
             classroom,
@@ -1134,6 +1150,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   <input
                     type="text"
                     required
+                    maxLength={120}
                     value={formData.firstName}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                     placeholder="ชื่อจริง"
@@ -1147,6 +1164,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   <input
                     type="text"
                     required
+                    maxLength={120}
                     value={formData.lastName}
                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                     placeholder="นามสกุล"
@@ -1161,6 +1179,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">ชื่อเล่น</label>
                   <input
                     type="text"
+                    maxLength={80}
                     value={formData.nickname}
                     onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
                     placeholder="เช่น ก้อง, แพรวา"
@@ -1186,6 +1205,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">ห้องเรียน</label>
                   <input
                     type="text"
+                    maxLength={30}
                     value={formData.classroom}
                     onChange={(e) => setFormData({ ...formData, classroom: e.target.value })}
                     placeholder="เช่น 1, 2 หรือ 1/2"

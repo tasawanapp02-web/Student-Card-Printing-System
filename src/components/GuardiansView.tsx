@@ -286,8 +286,20 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
   // Save Guardian
   const handleSaveGuardian = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!guardianForm.firstName.trim() || !guardianForm.lastName.trim()) {
+    const cleanText = (val: string, maxLen: number) =>
+      val.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, maxLen);
+
+    const cleanFirstName = cleanText(guardianForm.firstName, 120);
+    const cleanLastName = cleanText(guardianForm.lastName, 120);
+    const cleanPhone = cleanText(guardianForm.phone, 40);
+
+    if (!cleanFirstName || !cleanLastName) {
       onNotify('กรุณาระบุชื่อและนามสกุลผู้ปกครอง', 'error');
+      return;
+    }
+
+    if (cleanPhone && !/^[0-9+\-\s(),.ต่อextEXT]+$/.test(cleanPhone)) {
+      onNotify('เบอร์โทรศัพท์ควรประกอบด้วยตัวเลขหรือเครื่องหมาย - + ( ) เท่านั้น', 'error');
       return;
     }
 
@@ -332,11 +344,11 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
 
     const newGuardian: Guardian = {
       id: guardianForm.id || 'guard_' + Date.now(),
-      prefix: guardianForm.prefix,
-      firstName: guardianForm.firstName.trim(),
-      lastName: guardianForm.lastName.trim(),
-      relation: guardianForm.relation,
-      phone: guardianForm.phone.trim(),
+      prefix: cleanText(guardianForm.prefix, 50),
+      firstName: cleanFirstName,
+      lastName: cleanLastName,
+      relation: cleanText(guardianForm.relation, 80) || 'ผู้ปกครอง',
+      phone: cleanPhone,
       photoUrl: finalPhotoUrl,
       photoFileName: finalFileName,
       photoStoragePath: finalStoragePath,
@@ -410,23 +422,33 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
 
   const handleSaveStudentEdit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentEditForm.firstName.trim() || !studentEditForm.lastName.trim()) {
+    const cleanText = (val: string, maxLen: number) =>
+      val.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, maxLen);
+
+    const cleanFirstName = cleanText(studentEditForm.firstName, 120);
+    const cleanLastName = cleanText(studentEditForm.lastName, 120);
+    if (!cleanFirstName || !cleanLastName) {
       onNotify('กรุณาระบุชื่อและนามสกุลนักเรียน', 'error');
       return;
     }
+
+    const rawYear = Number(studentEditForm.entryYear);
+    const cleanEntryYear = Number.isFinite(rawYear)
+      ? Math.min(2700, Math.max(2500, Math.round(rawYear)))
+      : getCurrentBuddhistYear();
 
     const nowIso = new Date().toISOString();
     const updatedStudents = students.map((s) =>
       s.studentId === studentEditForm.studentId
         ? {
             ...s,
-            prefix: studentEditForm.prefix,
-            firstName: studentEditForm.firstName.trim(),
-            lastName: studentEditForm.lastName.trim(),
-            nickname: studentEditForm.nickname.trim(),
+            prefix: cleanText(studentEditForm.prefix, 50),
+            firstName: cleanFirstName,
+            lastName: cleanLastName,
+            nickname: cleanText(studentEditForm.nickname, 80),
             level: studentEditForm.level,
-            classroom: studentEditForm.classroom.trim() || '1',
-            entryYear: Number(studentEditForm.entryYear),
+            classroom: cleanText(studentEditForm.classroom, 30) || '1',
+            entryYear: cleanEntryYear,
             updatedAt: nowIso,
           }
         : s
@@ -1718,6 +1740,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                   <input
                     type="text"
                     required
+                    maxLength={120}
                     value={guardianForm.firstName}
                     onChange={(e) => setGuardianForm({ ...guardianForm, firstName: e.target.value })}
                     placeholder="ชื่อจริง"
@@ -1731,6 +1754,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                   <input
                     type="text"
                     required
+                    maxLength={120}
                     value={guardianForm.lastName}
                     onChange={(e) => setGuardianForm({ ...guardianForm, lastName: e.target.value })}
                     placeholder="นามสกุล"
@@ -1763,6 +1787,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">เบอร์โทรศัพท์</label>
                   <input
                     type="text"
+                    maxLength={40}
                     value={guardianForm.phone}
                     onChange={(e) => setGuardianForm({ ...guardianForm, phone: e.target.value })}
                     placeholder="เช่น 081-234-5678"
@@ -2886,6 +2911,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                   <input
                     type="text"
                     required
+                    maxLength={120}
                     value={studentEditForm.firstName}
                     onChange={(e) => setStudentEditForm({ ...studentEditForm, firstName: e.target.value })}
                     className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl font-sarabun"
@@ -2898,6 +2924,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                   <input
                     type="text"
                     required
+                    maxLength={120}
                     value={studentEditForm.lastName}
                     onChange={(e) => setStudentEditForm({ ...studentEditForm, lastName: e.target.value })}
                     className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl font-sarabun"
@@ -2910,6 +2937,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">ชื่อเล่น</label>
                   <input
                     type="text"
+                    maxLength={80}
                     value={studentEditForm.nickname}
                     onChange={(e) => setStudentEditForm({ ...studentEditForm, nickname: e.target.value })}
                     className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl font-sarabun"
@@ -2938,6 +2966,7 @@ export const GuardiansView: React.FC<GuardiansViewProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">ห้องเรียน</label>
                   <input
                     type="text"
+                    maxLength={30}
                     value={studentEditForm.classroom}
                     onChange={(e) => setStudentEditForm({ ...studentEditForm, classroom: e.target.value })}
                     className="w-full px-3 py-2 text-xs border border-slate-300 rounded-xl font-sarabun"

@@ -40,10 +40,25 @@ export default function App() {
           try {
             await storageService.initRealtimeSync(fbUser);
             const account = storageService.buildUserAccountFromFirebaseUser(fbUser);
-            storageService.setCurrentUser(account);
-            if (active) setCurrentUser(account);
+            if (!account.isActive) {
+              await signOut(auth);
+              storageService.stopRealtimeSync(true);
+              storageService.setCurrentUser(null);
+              if (active) setCurrentUser(null);
+            } else {
+              storageService.setCurrentUser(account);
+              if (active) setCurrentUser(account);
+            }
           } catch (e) {
             console.error('Firebase sync initialization error:', e);
+            try {
+              await signOut(auth);
+            } catch {
+              // ignore
+            }
+            storageService.stopRealtimeSync(true);
+            storageService.setCurrentUser(null);
+            if (active) setCurrentUser(null);
           } finally {
             if (active) {
               setIsSyncingCloud(false);
@@ -88,6 +103,18 @@ export default function App() {
   })();
 
   if (isPrintPreviewMode) {
+    if (!currentUser) {
+      return (
+        <LoginModal
+          onLoginSuccess={(user) => {
+            setCurrentUser(user);
+          }}
+          onNotify={() => {
+            // Transition directly into PrintPreviewTab after authentication
+          }}
+        />
+      );
+    }
     return <PrintPreviewTab />;
   }
 
@@ -135,6 +162,14 @@ function MainAppContent({ currentUser, onUserChange }: MainAppContentProps) {
       const fbUser = auth.currentUser;
       if (!fbUser || !storageService.isAuthorizedFirebaseUser(fbUser)) return;
       const latest = storageService.buildUserAccountFromFirebaseUser(fbUser);
+      if (!latest.isActive) {
+        void signOut(auth).catch(() => undefined);
+        storageService.stopRealtimeSync(true);
+        storageService.setCurrentUser(null);
+        onUserChange(null);
+        showToast('บัญชีผู้ใช้งานนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ', 'error');
+        return;
+      }
       if (
         latest.fullName !== currentUser.fullName ||
         latest.position !== currentUser.position ||

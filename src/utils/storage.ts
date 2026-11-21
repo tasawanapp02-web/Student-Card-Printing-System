@@ -23,13 +23,13 @@ import {
   DEFAULT_JUNIOR_DESIGN,
   DEFAULT_SENIOR_DESIGN,
   DEFAULT_BACK_CARD_DESIGN,
-  INITIAL_USERS,
   SYSTEM_ADMIN_RECOVERY,
 } from './defaultData';
 import {
   compressCardImage,
   compressAvatarPhoto,
   dataUrlToFile,
+  isSafeSvgMarkup,
   MAX_FIRESTORE_DATAURL_CHARS,
   type CompressedImageResult,
 } from './imageOptimizer';
@@ -126,6 +126,50 @@ function sanitizeFileName(name: string): string {
 function truncateStr(val: unknown, maxLen: number): string {
   if (typeof val !== 'string') return '';
   return val.length > maxLen ? val.slice(0, maxLen) : val;
+}
+
+function stripControlChars(val: unknown, maxLen: number): string {
+  if (typeof val !== 'string') return '';
+  // Remove ASCII control characters (NUL..US and DEL) before persisting
+  const cleaned = val.replace(/[\u0000-\u001F\u007F]/g, '').trim();
+  return cleaned.length > maxLen ? cleaned.slice(0, maxLen) : cleaned;
+}
+
+function isSafeSvgDataUrl(dataUrl: string): boolean {
+  const lower = dataUrl.toLowerCase();
+  if (!lower.startsWith('data:image/svg+xml')) return false;
+  const commaIdx = dataUrl.indexOf(',');
+  if (commaIdx === -1) return false;
+  const header = lower.slice(0, commaIdx);
+  const body = dataUrl.slice(commaIdx + 1);
+  try {
+    const decoded = header.includes(';base64')
+      ? atob(body)
+      : decodeURIComponent(body);
+    return isSafeSvgMarkup(decoded);
+  } catch {
+    return false;
+  }
+}
+
+function isSafeImageSrc(url: unknown): boolean {
+  if (typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('https://') || lower.startsWith('blob:')) {
+    return true;
+  }
+  if (/^firestore-asset:\/\/[a-zA-Z0-9_-]{1,120}$/.test(trimmed)) {
+    return true;
+  }
+  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[a-zA-Z0-9+/=]+$/.test(trimmed)) {
+    return true;
+  }
+  if (lower.startsWith('data:image/svg+xml')) {
+    return isSafeSvgDataUrl(trimmed);
+  }
+  return false;
 }
 
 function clampNum(val: unknown, min: number, max: number, fallback: number): number {
@@ -544,6 +588,7 @@ class StorageService {
       this.removeItem(STORAGE_KEYS.GUARDIANS);
       this.removeItem(STORAGE_KEYS.CARDS);
       this.removeItem(STORAGE_KEYS.PRINT_HISTORY);
+      this.removeItem(STORAGE_KEYS.PRINT_PREVIEW_PAYLOAD);
       this.removeItem(STORAGE_KEYS.FRONT_DESIGNS);
       this.removeItem(STORAGE_KEYS.BACK_DESIGNS);
       this.removeItem(STORAGE_KEYS.IMAGE_ASSETS);
@@ -623,6 +668,10 @@ class StorageService {
         waitFlags.printHeaders
       ) {
         if (!this.isCloudSynced) {
+          if (this.currentOperatorProfile?.isActive === false) {
+            rejectInitial(new Error('บัญชีผู้ใช้งานนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ'));
+            return;
+          }
           this.isCloudSynced = true;
           this.lastSyncedAt = new Date().toISOString();
           resolveInitial();
@@ -1334,12 +1383,12 @@ class StorageService {
 
     const basePayload: Record<string, unknown> = {
       studentId: docId,
-      prefix: truncateStr(student.prefix || '', 50),
-      firstName: truncateStr(student.firstName || '-', 120) || '-',
-      lastName: truncateStr(student.lastName || '-', 120) || '-',
-      nickname: truncateStr(student.nickname || '', 80),
+      prefix: stripControlChars(student.prefix || '', 50),
+      firstName: stripControlChars(student.firstName || '-', 120) || '-',
+      lastName: stripControlChars(student.lastName || '-', 120) || '-',
+      nickname: stripControlChars(student.nickname || '', 80),
       level: student.level === 'มัธยมศึกษาตอนปลาย' ? 'มัธยมศึกษาตอนปลาย' : 'มัธยมศึกษาตอนต้น',
-      classroom: truncateStr(student.classroom || '1', 30) || '1',
+      classroom: stripControlChars(student.classroom || '1', 30) || '1',
       entryYear: Math.round(clampNum(student.entryYear, 2500, 2700, 2569)),
       updatedAt: serverTimestamp(),
     };
@@ -1377,16 +1426,19 @@ class StorageService {
     const path = `guardians/${docId}`;
 
     const photoAssetId = guardian.photoAssetId ? sanitizeId(guardian.photoAssetId, 'img') : '';
+    const safePhotoUrl = isSafeImageSrc(guardian.photoUrl)
+      ? truncateStr(guardian.photoUrl, 2048)
+      : '';
 
     const basePayload: Record<string, unknown> = {
       id: docId,
-      prefix: truncateStr(guardian.prefix || '', 50),
-      firstName: truncateStr(guardian.firstName || '-', 120) || '-',
-      lastName: truncateStr(guardian.lastName || '-', 120) || '-',
-      relation: truncateStr(guardian.relation || 'ผู้ปกครอง', 80) || 'ผู้ปกครอง',
-      phone: truncateStr(guardian.phone || '', 40),
-      photoUrl: truncateStr(guardian.photoUrl || '', 2048),
-      photoFileName: truncateStr(guardian.photoFileName || 'guardian_photo.jpg', 256),
+      prefix: stripControlChars(guardian.prefix || '', 50),
+      firstName: stripControlChars(guardian.firstName || '-', 120) || '-',
+      lastName: stripControlChars(guardian.lastName || '-', 120) || '-',
+      relation: stripControlChars(guardian.relation || 'ผู้ปกครอง', 80) || 'ผู้ปกครอง',
+      phone: stripControlChars(guardian.phone || '', 40),
+      photoUrl: safePhotoUrl,
+      photoFileName: stripControlChars(guardian.photoFileName || 'guardian_photo.jpg', 256),
       photoStoragePath: truncateStr(guardian.photoStoragePath || '', 512),
       photoAssetId,
       updatedAt: serverTimestamp(),
@@ -1617,10 +1669,14 @@ class StorageService {
     const path = `image_assets/${docId}`;
 
     const safeDataUrl =
-      asset.dataUrl && asset.dataUrl.startsWith('data:image/') && asset.dataUrl.length <= MAX_FIRESTORE_DATAURL_CHARS
+      asset.dataUrl &&
+      asset.dataUrl.startsWith('data:image/') &&
+      asset.dataUrl.length <= MAX_FIRESTORE_DATAURL_CHARS &&
+      isSafeImageSrc(asset.dataUrl)
         ? asset.dataUrl
         : '';
-    const safeStorageUrl = truncateStr(asset.storageUrl || '', 2048);
+    const rawStorageUrl = truncateStr(asset.storageUrl || '', 2048);
+    const safeStorageUrl = rawStorageUrl.startsWith('https://') ? rawStorageUrl : '';
 
     const basePayload: Record<string, unknown> = {
       id: docId,
@@ -1688,15 +1744,16 @@ class StorageService {
       const asset = this.getImageAssetById(extractedId);
       if (asset) {
         if (raw.startsWith('firestore-asset://') || !raw) {
-          return asset.dataUrl || asset.storageUrl || '';
+          const candidate = asset.dataUrl || asset.storageUrl || '';
+          return isSafeImageSrc(candidate) ? candidate : '';
         }
-        return raw;
+        return isSafeImageSrc(raw) ? raw : '';
       }
       if (raw.startsWith('firestore-asset://')) {
         return '';
       }
     }
-    return raw;
+    return isSafeImageSrc(raw) ? raw : '';
   }
 
   public getImageFallbackDataUrl(urlOrRef?: string, assetId?: string): string | undefined {
@@ -1708,7 +1765,8 @@ class StorageService {
     const matched =
       (extractedId ? assets.find((a) => a.id === extractedId) : undefined) ||
       (raw ? assets.find((a) => a.storageUrl === raw) : undefined);
-    return matched?.dataUrl || undefined;
+    const candidate = matched?.dataUrl;
+    return candidate && isSafeImageSrc(candidate) ? candidate : undefined;
   }
 
   public getImageAssetReferences(asset: ImageAsset): ImageAssetReference[] {
@@ -2939,9 +2997,9 @@ class StorageService {
     this.notifyListeners();
   }
 
-  // --- USERS, PASSWORDS & FIREBASE AUTO-PERMISSION ---
+  // --- USERS & FIREBASE AUTHENTICATION ---
   public getUsers(): UserAccount[] {
-    return INITIAL_USERS;
+    return [];
   }
 
   public getRememberedUsername(): string {
@@ -3128,6 +3186,12 @@ class StorageService {
     const fbUser = cred.user;
 
     await this.initRealtimeSync(fbUser);
+    if (this.currentOperatorProfile?.isActive === false) {
+      await fbSignOut(auth);
+      this.stopRealtimeSync(true);
+      this.setCurrentUser(null);
+      throw new Error('บัญชีผู้ใช้งานนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
+    }
     const account = this.buildUserAccountFromFirebaseUser(fbUser);
     this.setCurrentUser(account);
     return account;
@@ -3144,32 +3208,8 @@ class StorageService {
     }
 
     const resolvedEmail = this.resolveLoginEmail(trimmedInput);
-    const isDefaultAdminMatch =
-      (trimmedInput.toLowerCase() === SYSTEM_ADMIN_RECOVERY.username.toLowerCase() ||
-        resolvedEmail === SYSTEM_ADMIN_RECOVERY.email.toLowerCase()) &&
-      password === (SYSTEM_ADMIN_RECOVERY.password || '213894120');
-
-    let fbUser: User | null = null;
-
-    try {
-      const cred = await signInWithEmailAndPassword(auth, resolvedEmail, password);
-      fbUser = cred.user;
-    } catch (err: unknown) {
-      const code = (err as { code?: string })?.code || '';
-      // Auto-provision default admin account in Firebase Auth on first login using system recovery file
-      if (
-        isDefaultAdminMatch &&
-        (code === 'auth/user-not-found' || code === 'auth/invalid-credential')
-      ) {
-        const created = await createUserWithEmailAndPassword(auth, resolvedEmail, password);
-        await updateProfile(created.user, {
-          displayName: SYSTEM_ADMIN_RECOVERY.fullName,
-        });
-        fbUser = created.user;
-      } else {
-        throw err;
-      }
-    }
+    const cred = await signInWithEmailAndPassword(auth, resolvedEmail, password);
+    const fbUser = cred.user;
 
     await this.initRealtimeSync(fbUser);
 
@@ -3191,7 +3231,7 @@ class StorageService {
 
       if (existingOp.isActive === false) {
         await fbSignOut(auth);
-        this.stopRealtimeSync();
+        this.stopRealtimeSync(true);
         this.setCurrentUser(null);
         throw new Error('บัญชีผู้ใช้งานนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
       }
@@ -3977,6 +4017,7 @@ class StorageService {
     this.removeItem(STORAGE_KEYS.DESIGNER_SAMPLE_PHOTO);
     this.removeItem(STORAGE_KEYS.DESIGNER_SAMPLE_PHOTO_PATH);
     this.removeItem(STORAGE_KEYS.DESIGNER_SAMPLE_PHOTO_ASSET_ID);
+    this.removeItem(STORAGE_KEYS.PRINT_PREVIEW_PAYLOAD);
     this.removeItem(STORAGE_KEYS.IMAGE_ASSETS);
     this.removeItem(STORAGE_KEYS.PRINT_HEADERS);
     this.cloudImageAssets = [];

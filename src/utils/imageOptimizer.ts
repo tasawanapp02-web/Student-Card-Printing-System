@@ -154,8 +154,180 @@ function extensionFromMime(mimeType: string): string {
 }
 
 export const MAX_FIRESTORE_DATAURL_CHARS = 780000;
+export const MAX_RAW_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB upper bound for raw uploads
 // Base64 expands binary size by ~4/3; below 550 KB binary is guaranteed under 780k chars
 const SAFE_DIRECT_BLOB_BYTES = 550000;
+
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
+]);
+
+const DANGEROUS_SVG_TAGS = new Set([
+  'script',
+  'foreignobject',
+  'iframe',
+  'object',
+  'embed',
+  'applet',
+  'frame',
+  'frameset',
+  'link',
+  'meta',
+  'base',
+  'animate',
+  'animatetransform',
+  'animatemotion',
+  'set',
+  'handler',
+  'listener',
+]);
+
+export function validateImageUploadFile(file: File): void {
+  if (!file || file.size <= 0) {
+    throw new Error('ไม่พบข้อมูลไฟล์รูปภาพ');
+  }
+  if (file.size > MAX_RAW_IMAGE_BYTES) {
+    throw new Error('ไฟล์รูปภาพมีขนาดใหญ่เกิน 20 MB กรุณาเลือกไฟล์ขนาดเล็กลง');
+  }
+  if (file.type && !ALLOWED_IMAGE_MIME_TYPES.has(file.type.toLowerCase())) {
+    throw new Error('รองรับเฉพาะไฟล์รูปภาพ JPEG, PNG, WebP, GIF หรือ SVG เท่านั้น');
+  }
+}
+
+export function isSafeSvgMarkup(svgText: string): boolean {
+  const lower = svgText.toLowerCase();
+  if (
+    lower.includes('<script') ||
+    lower.includes('<foreignobject') ||
+    lower.includes('<iframe') ||
+    lower.includes('<object') ||
+    lower.includes('<embed') ||
+    lower.includes('javascript:') ||
+    lower.includes('vbscript:') ||
+    lower.includes('data:text/html') ||
+    /\son[a-z]+\s*=/.test(lower)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function sanitizeSvgContent(rawSvgText: string): string {
+  if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') {
+    if (!isSafeSvgMarkup(rawSvgText)) {
+      throw new Error('ไฟล์ SVG มีคำสั่งที่ไม่อนุญาตเพื่อความปลอดภัย');
+    }
+    return rawSvgText;
+  }
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(rawSvgText, 'image/svg+xml');
+  const parseErrors = doc.getElementsByTagName('parsererror');
+  const root = doc.documentElement;
+  if (parseErrors.length > 0 || !root || root.localName.toLowerCase() !== 'svg') {
+    throw new Error('โครงสร้างไฟล์ SVG ไม่ถูกต้องหรือไม่ปลอดภัย');
+  }
+
+  const cleanNodeTree = (el: Element): void => {
+    const children = Array.from(el.children);
+    for (const child of children) {
+      const tag = child.localName.toLowerCase();
+      if (DANGEROUS_SVG_TAGS.has(tag)) {
+        child.remove();
+        continue;
+      }
+      cleanNodeTree(child);
+    }
+
+    const attrs = Array.from(el.attributes);
+    for (const attr of attrs) {
+      const attrName = attr.name.toLowerCase();
+      const attrVal = attr.value.trim();
+      const attrValLower = attrVal.toLowerCase();
+
+      if (attrName.startsWith('on')) {
+        el.removeAttribute(attr.name);
+        continue;
+      }
+
+      if (
+        attrName === 'href' ||
+        attrName === 'xlink:href' ||
+        attrName === 'src' ||
+        attrName === 'action' ||
+        attrName === 'formaction'
+      ) {
+        // Allow only internal fragment references (#id) inside SVG to prevent SSRF / script execution
+        if (!attrVal.startsWith('#')) {
+          el.removeAttribute(attr.name);
+        }
+        continue;
+      }
+
+      if (
+        attrName === 'style' &&
+        (attrValLower.includes('javascript:') ||
+          attrValLower.includes('vbscript:') ||
+          attrValLower.includes('expression(') ||
+          attrValLower.includes('-moz-binding') ||
+          attrValLower.includes('behavior:') ||
+          /url\(\s*['"]?\s*(?:https?:|\/\/|data:text\/html)/i.test(attrValLower))
+      ) {
+        el.removeAttribute(attr.name);
+      }
+    }
+
+    if (el.localName.toLowerCase() === 'style') {
+      const css = (el.textContent || '').toLowerCase();
+      if (
+        css.includes('javascript:') ||
+        css.includes('expression(') ||
+        css.includes('-moz-binding') ||
+        css.includes('@import') ||
+        /url\(\s*['"]?\s*(?:https?:|\/\/|data:text\/html)/i.test(css)
+      ) {
+        el.remove();
+      }
+    }
+  };
+
+  cleanNodeTree(root);
+  const serialized = new XMLSerializer().serializeToString(root);
+  if (!isSafeSvgMarkup(serialized)) {
+    throw new Error('ไฟล์ SVG มีคำสั่งที่ไม่อนุญาตเพื่อความปลอดภัย');
+  }
+  return serialized;
+}
+
+async function processSvgFile(
+  file: File,
+  defaultWidth: number,
+  defaultHeight: number
+): Promise<CompressedImageResult> {
+  const rawText = await file.text();
+  const cleanSvg = sanitizeSvgContent(rawText);
+  const cleanBlob = new Blob([cleanSvg], { type: 'image/svg+xml' });
+  const dataUrl = await readFileAsDataUrl(cleanBlob);
+  if (dataUrl.length > MAX_FIRESTORE_DATAURL_CHARS) {
+    throw new Error('ไฟล์ SVG มีขนาดใหญ่เกินขีดจำกัด กรุณาเลือกไฟล์ขนาดเล็กลง');
+  }
+  return {
+    blob: cleanBlob,
+    dataUrl,
+    contentType: 'image/svg+xml',
+    extension: 'svg',
+    originalSize: file.size,
+    compressedSize: cleanBlob.size,
+    width: defaultWidth,
+    height: defaultHeight,
+    wasSvg: true,
+  };
+}
 
 async function encodeSinglePass(
   canvas: HTMLCanvasElement,
@@ -241,19 +413,9 @@ const cardCompressionCache = new WeakMap<File, Promise<CompressedImageResult>>()
 const avatarCompressionCache = new WeakMap<File, Promise<CompressedImageResult>>();
 
 async function runCompressCardImage(file: File): Promise<CompressedImageResult> {
+  validateImageUploadFile(file);
   if (file.type === 'image/svg+xml') {
-    const dataUrl = await readFileAsDataUrl(file);
-    return {
-      blob: file,
-      dataUrl,
-      contentType: 'image/svg+xml',
-      extension: 'svg',
-      originalSize: file.size,
-      compressedSize: file.size,
-      width: 1011,
-      height: 638,
-      wasSvg: true,
-    };
+    return processSvgFile(file, 1011, 638);
   }
 
   const decoded = await decodeImageFast(file);
@@ -349,19 +511,9 @@ async function runCompressCardImage(file: File): Promise<CompressedImageResult> 
 }
 
 async function runCompressAvatarPhoto(file: File): Promise<CompressedImageResult> {
+  validateImageUploadFile(file);
   if (file.type === 'image/svg+xml') {
-    const dataUrl = await readFileAsDataUrl(file);
-    return {
-      blob: file,
-      dataUrl,
-      contentType: 'image/svg+xml',
-      extension: 'svg',
-      originalSize: file.size,
-      compressedSize: file.size,
-      width: 400,
-      height: 480,
-      wasSvg: true,
-    };
+    return processSvgFile(file, 400, 480);
   }
 
   const decoded = await decodeImageFast(file);
