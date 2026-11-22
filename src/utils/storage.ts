@@ -1285,6 +1285,8 @@ class StorageService {
       bgImageAssetId: bgAssetId,
       bgType: design.bgType === 'custom' ? 'custom' : 'preset',
       bgLayerAbovePhoto: design.bgLayerAbovePhoto !== false,
+      cardWidthMm: clampNum(design.cardWidthMm, 20, 300, 85.6),
+      cardHeightMm: clampNum(design.cardHeightMm, 20, 300, 54.0),
       elements: design.elements,
       updatedAt: serverTimestamp(),
     };
@@ -1346,6 +1348,8 @@ class StorageService {
       showLogo: Boolean(design.showLogo),
       showSignatureBox: Boolean(design.showSignatureBox),
       signatureLabel: truncateStr(design.signatureLabel || '', 150),
+      cardWidthMm: clampNum(design.cardWidthMm, 20, 300, 85.6),
+      cardHeightMm: clampNum(design.cardHeightMm, 20, 300, 54.0),
       updatedAt: serverTimestamp(),
     };
 
@@ -2596,6 +2600,8 @@ class StorageService {
       ...design,
       name: design.name || design.title || defaultVal.name,
       bgLayerAbovePhoto: design.bgLayerAbovePhoto === undefined ? true : design.bgLayerAbovePhoto,
+      cardWidthMm: clampNum(design.cardWidthMm, 20, 300, 85.6),
+      cardHeightMm: clampNum(design.cardHeightMm, 20, 300, 54.0),
       elements: {
         ...defaultVal.elements,
         ...(design.elements || {}),
@@ -2779,6 +2785,8 @@ class StorageService {
       ...DEFAULT_BACK_CARD_DESIGN,
       ...design,
       name: design.name || design.title || DEFAULT_BACK_CARD_DESIGN.name,
+      cardWidthMm: clampNum(design.cardWidthMm, 20, 300, 85.6),
+      cardHeightMm: clampNum(design.cardHeightMm, 20, 300, 54.0),
     };
   }
 

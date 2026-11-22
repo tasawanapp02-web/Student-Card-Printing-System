@@ -511,12 +511,20 @@ export const TemplateManagementView: React.FC<TemplateManagementViewProps> = ({
                         )}
                       </div>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        อัปเดต {formatUpdatedDate(tpl.updatedAt)}
+                        {(tpl.cardWidthMm ?? 85.6).toFixed(1)}×{(tpl.cardHeightMm ?? 54.0).toFixed(1)}mm • อัปเดต {formatUpdatedDate(tpl.updatedAt)}
                       </span>
                     </div>
 
                     <div className="inline-flex items-center justify-center rounded-[5.3px] overflow-hidden shadow-none ring-0 border-0 leading-none">
-                      <CardPreview design={tpl} scale={0.76} hideBorderAndShadow={true} />
+                      <CardPreview
+                        design={tpl}
+                        scale={Math.min(
+                          0.76,
+                          (0.76 * 85.6) / (tpl.cardWidthMm || 85.6),
+                          (0.76 * 54.0 * 1.4) / (tpl.cardHeightMm || 54.0)
+                        )}
+                        hideBorderAndShadow={true}
+                      />
                     </div>
                   </div>
 
@@ -656,12 +664,19 @@ export const TemplateManagementView: React.FC<TemplateManagementViewProps> = ({
                         )}
                       </div>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        อัปเดต {formatUpdatedDate(tpl.updatedAt)}
+                        {(tpl.cardWidthMm ?? 85.6).toFixed(1)}×{(tpl.cardHeightMm ?? 54.0).toFixed(1)}mm • อัปเดต {formatUpdatedDate(tpl.updatedAt)}
                       </span>
                     </div>
 
                     <div className="rounded-lg overflow-hidden shadow-md ring-1 ring-slate-300/60">
-                      <BackCardPreview design={tpl} scale={0.76} />
+                      <BackCardPreview
+                        design={tpl}
+                        scale={Math.min(
+                          0.76,
+                          (0.76 * 85.6) / (tpl.cardWidthMm || 85.6),
+                          (0.76 * 54.0 * 1.4) / (tpl.cardHeightMm || 54.0)
+                        )}
+                      />
                     </div>
                   </div>
 

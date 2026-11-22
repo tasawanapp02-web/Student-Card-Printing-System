@@ -873,7 +873,9 @@ export const PvcBackPrintView: React.FC<PvcBackPrintViewProps> = ({
                   {enableSlot1 ? (
                     <BackCardPreview
                       design={resolvedSlot1Back}
-                      scale={(trayConfig.cardWidthMm * 2.4) / 323.5}
+                      cardWidthMm={trayConfig.cardWidthMm}
+                      cardHeightMm={trayConfig.cardHeightMm}
+                      scale={(2.4 * 85.6) / 323.5}
                       rotate180={rotate180Slot1}
                     />
                   ) : (
@@ -908,7 +910,9 @@ export const PvcBackPrintView: React.FC<PvcBackPrintViewProps> = ({
                   {enableSlot2 ? (
                     <BackCardPreview
                       design={resolvedSlot2Back}
-                      scale={(trayConfig.cardWidthMm * 2.4) / 323.5}
+                      cardWidthMm={trayConfig.cardWidthMm}
+                      cardHeightMm={trayConfig.cardHeightMm}
+                      scale={(2.4 * 85.6) / 323.5}
                       rotate180={rotate180Slot2}
                     />
                   ) : (

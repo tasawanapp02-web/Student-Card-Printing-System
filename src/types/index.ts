@@ -156,6 +156,8 @@ export interface CardDesignConfig {
   bgImageAssetId?: string;
   bgType: 'preset' | 'custom';
   bgLayerAbovePhoto?: boolean; // When true (default), PNG background image is rendered above guardian photo (guardian photo underneath)
+  cardWidthMm?: number; // Default 85.6mm (CR80)
+  cardHeightMm?: number; // Default 54.0mm (CR80)
   elements: {
     title: CardElementStyle;
     subtitle: CardElementStyle;
@@ -228,6 +230,8 @@ export interface BackCardDesignConfig {
   showLogo: boolean;
   showSignatureBox: boolean;
   signatureLabel: string;
+  cardWidthMm?: number; // Default 85.6mm (CR80)
+  cardHeightMm?: number; // Default 54.0mm (CR80)
 }
 
 export type PhotoPrintLayout = 'vertical' | 'horizontal';

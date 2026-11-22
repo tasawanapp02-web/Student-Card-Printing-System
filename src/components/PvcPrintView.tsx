@@ -685,7 +685,9 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                       student={student1}
                       guardian={guardian1}
                       card={card1}
-                      scale={(trayConfig.cardWidthMm * 2.4) / 323.5}
+                      cardWidthMm={trayConfig.cardWidthMm}
+                      cardHeightMm={trayConfig.cardHeightMm}
+                      scale={(2.4 * 85.6) / 323.5}
                     />
                   ) : (
                     <div className="w-full h-full bg-slate-700/80 border-2 border-dashed border-slate-500 rounded-[5px] flex items-center justify-center text-slate-400 text-xs font-medium">
@@ -721,7 +723,9 @@ export const PvcPrintView: React.FC<PvcPrintViewProps> = ({
                       student={student2}
                       guardian={guardian2}
                       card={card2}
-                      scale={(trayConfig.cardWidthMm * 2.4) / 323.5}
+                      cardWidthMm={trayConfig.cardWidthMm}
+                      cardHeightMm={trayConfig.cardHeightMm}
+                      scale={(2.4 * 85.6) / 323.5}
                     />
                   ) : (
                     <div className="w-full h-full bg-slate-700/80 border-2 border-dashed border-slate-500 rounded-[5px] flex items-center justify-center text-slate-400 text-xs font-medium">

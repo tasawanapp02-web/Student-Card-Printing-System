@@ -48,6 +48,8 @@ export const DEFAULT_JUNIOR_DESIGN: CardDesignConfig = {
   bgImageUrl: DEFAULT_JUNIOR_HIGH_BG,
   bgType: 'preset',
   bgLayerAbovePhoto: true,
+  cardWidthMm: 85.6,
+  cardHeightMm: 54.0,
   elements: {
     schoolLogo: {
       x: 7.0,
@@ -196,6 +198,8 @@ export const DEFAULT_SENIOR_DESIGN: CardDesignConfig = {
   bgImageUrl: DEFAULT_SENIOR_HIGH_BG,
   bgType: 'preset',
   bgLayerAbovePhoto: true,
+  cardWidthMm: 85.6,
+  cardHeightMm: 54.0,
   elements: {
     schoolLogo: {
       x: 7.0,
@@ -357,6 +361,8 @@ export const DEFAULT_BACK_CARD_DESIGN: BackCardDesignConfig = {
   showLogo: true,
   showSignatureBox: true,
   signatureLabel: 'ผู้อำนวยการสถานศึกษา / นายทะเบียน',
+  cardWidthMm: 85.6,
+  cardHeightMm: 54.0,
 };
 
 export const INITIAL_STUDENTS: Student[] = [];

@@ -140,7 +140,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'id', 'ownerId', 'name', 'isDefault', 'level', 'title', 'subtitle',
           'bgImageUrl', 'bgImageStoragePath', 'bgImageAssetId', 'bgType', 'bgLayerAbovePhoto',
-          'elements', 'createdAt', 'updatedAt'
+          'cardWidthMm', 'cardHeightMm', 'elements', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.id) && data.id == docId
         && isValidId(data.ownerId)
@@ -154,6 +154,8 @@ service cloud.firestore {
         && (!('bgImageAssetId' in data) || isValidOptionalAssetId(data.bgImageAssetId))
         && data.bgType in ['preset', 'custom']
         && (!('bgLayerAbovePhoto' in data) || data.bgLayerAbovePhoto is bool)
+        && (!('cardWidthMm' in data) || (data.cardWidthMm is number && data.cardWidthMm >= 20 && data.cardWidthMm <= 300))
+        && (!('cardHeightMm' in data) || (data.cardHeightMm is number && data.cardHeightMm >= 20 && data.cardHeightMm <= 300))
         && data.elements is map
         && data.elements.keys().hasAll([
           'title', 'subtitle', 'guardianPhoto', 'guardianName', 'studentName',
@@ -176,7 +178,8 @@ service cloud.firestore {
           'id', 'ownerId', 'name', 'isDefault', 'displayMode', 'title', 'subtitle',
           'rules', 'emergencyLabel', 'emergencyPhone', 'footerNote',
           'accentColor', 'textColor', 'bgColor', 'bgImageUrl', 'bgImageStoragePath',
-          'bgImageAssetId', 'showLogo', 'showSignatureBox', 'signatureLabel', 'createdAt', 'updatedAt'
+          'bgImageAssetId', 'showLogo', 'showSignatureBox', 'signatureLabel',
+          'cardWidthMm', 'cardHeightMm', 'createdAt', 'updatedAt'
         ])
         && isValidId(data.id) && data.id == docId
         && isValidId(data.ownerId)
@@ -199,6 +202,8 @@ service cloud.firestore {
         && (!('showLogo' in data) || data.showLogo is bool)
         && (!('showSignatureBox' in data) || data.showSignatureBox is bool)
         && (!('signatureLabel' in data) || (data.signatureLabel is string && data.signatureLabel.size() <= 150))
+        && (!('cardWidthMm' in data) || (data.cardWidthMm is number && data.cardWidthMm >= 20 && data.cardWidthMm <= 300))
+        && (!('cardHeightMm' in data) || (data.cardHeightMm is number && data.cardHeightMm >= 20 && data.cardHeightMm <= 300))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -441,7 +446,7 @@ service cloud.firestore {
         && (
           isAdmin()
           || (incoming().diff(existing()).affectedKeys().hasOnly(['isDefault', 'updatedAt']))
-          || (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'isDefault', 'level', 'title', 'subtitle', 'bgImageUrl', 'bgImageStoragePath', 'bgImageAssetId', 'bgType', 'bgLayerAbovePhoto', 'elements', 'updatedAt']))
+          || (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'isDefault', 'level', 'title', 'subtitle', 'bgImageUrl', 'bgImageStoragePath', 'bgImageAssetId', 'bgType', 'bgLayerAbovePhoto', 'cardWidthMm', 'cardHeightMm', 'elements', 'updatedAt']))
         );
       allow delete: if isValidId(designId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);
     }
@@ -469,7 +474,7 @@ service cloud.firestore {
             'name', 'isDefault', 'displayMode', 'title', 'subtitle', 'rules',
             'emergencyLabel', 'emergencyPhone', 'footerNote', 'accentColor',
             'textColor', 'bgColor', 'bgImageUrl', 'bgImageStoragePath', 'bgImageAssetId',
-            'showLogo', 'showSignatureBox', 'signatureLabel', 'updatedAt'
+            'showLogo', 'showSignatureBox', 'signatureLabel', 'cardWidthMm', 'cardHeightMm', 'updatedAt'
           ]))
         );
       allow delete: if isValidId(designId) && isAuthorizedAuth() && (isAdmin() || existing().ownerId == request.auth.uid);

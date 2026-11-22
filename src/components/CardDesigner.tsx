@@ -48,6 +48,8 @@ import {
   AlertTriangle,
   FolderOpen,
   Database,
+  Maximize2,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 interface CardDesignerProps {
@@ -742,6 +744,20 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
 
   const selectedElement = currentFront.elements[selectedKey];
   const selectedMeta = ELEMENT_METAS.find((m) => m.key === selectedKey);
+  const frontWidthMm = currentFront.cardWidthMm && currentFront.cardWidthMm > 0 ? currentFront.cardWidthMm : 85.6;
+  const frontHeightMm = currentFront.cardHeightMm && currentFront.cardHeightMm > 0 ? currentFront.cardHeightMm : 54.0;
+  const backWidthMm = currentBack.cardWidthMm && currentBack.cardWidthMm > 0 ? currentBack.cardWidthMm : 85.6;
+  const backHeightMm = currentBack.cardHeightMm && currentBack.cardHeightMm > 0 ? currentBack.cardHeightMm : 54.0;
+
+  const CARD_SIZE_PRESETS = [
+    { label: 'CR80 แนวนอน (85.6×54)', width: 85.6, height: 54.0 },
+    { label: 'CR80 แนวตั้ง (54×85.6)', width: 54.0, height: 85.6 },
+    { label: 'บัตรใหญ่ (90×55)', width: 90.0, height: 55.0 },
+    { label: 'บัตรห้อยคอ (70×100)', width: 70.0, height: 100.0 },
+  ];
+
+  const clampCardDim = (val: number, fallback: number) =>
+    Number.isFinite(val) ? Math.round(Math.min(300, Math.max(20, val)) * 10) / 10 : fallback;
 
   return (
     <div className="space-y-5">
@@ -850,6 +866,9 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
                             ค่าเริ่มต้น
                           </span>
                         )}
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200/70 text-slate-600">
+                          {(tpl.cardWidthMm ?? 85.6).toFixed(1)}×{(tpl.cardHeightMm ?? 54.0).toFixed(1)}mm
+                        </span>
                       </div>
                       <div className="text-xs font-bold text-slate-800 truncate">
                         {tpl.name || tpl.title}
@@ -951,6 +970,9 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
                           ค่าเริ่มต้น
                         </span>
                       )}
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200/70 text-slate-600">
+                        {(tpl.cardWidthMm ?? 85.6).toFixed(1)}×{(tpl.cardHeightMm ?? 54.0).toFixed(1)}mm
+                      </span>
                     </div>
                     <div className="text-xs font-bold text-slate-800 truncate">
                       {tpl.name || tpl.title}
@@ -958,7 +980,7 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
                     <div className="text-[11px] text-slate-500 truncate font-sarabun mt-0.5">
                       {tpl.displayMode === 'imageOnly'
                         ? tpl.bgImageUrl
-                          ? 'ภาพพื้นหลังเต็มใบ CR80'
+                          ? `ภาพพื้นหลังเต็มใบ (${(tpl.cardWidthMm ?? 85.6).toFixed(1)}×${(tpl.cardHeightMm ?? 54.0).toFixed(1)} mm)`
                           : 'ยังไม่อัปโหลดภาพ'
                         : tpl.title}
                     </div>
@@ -1187,9 +1209,14 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
               </div>
 
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-500 pt-1">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-mono font-medium">
-                    85.6 mm × 54.0 mm (CR80)
+                    {frontWidthMm.toFixed(1)} mm × {frontHeightMm.toFixed(1)} mm
+                    {frontWidthMm === 85.6 && frontHeightMm === 54.0
+                      ? ' (CR80)'
+                      : frontWidthMm === 54.0 && frontHeightMm === 85.6
+                      ? ' (CR80 แนวตั้ง)'
+                      : ' (กำหนดเอง)'}
                   </span>
                   <span>เส้นประสีแดง = ขอบตัดตก (Bleed Guide)</span>
                 </div>
@@ -1239,6 +1266,118 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
                       className="hidden"
                     />
                   </label>
+                </div>
+              </div>
+
+              {/* Card Dimensions (Width x Length/Height) Settings Box */}
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <Maximize2 className="w-4 h-4 text-blue-600" />
+                    ตั้งค่าขนาดการ์ด (ความกว้าง × ความยาว)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentFront((prev) => ({
+                        ...prev,
+                        cardWidthMm: frontHeightMm,
+                        cardHeightMm: frontWidthMm,
+                      }));
+                      setHasChanges(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 text-[11px] font-semibold rounded-lg border border-slate-300 transition-colors cursor-pointer"
+                    title="สลับค่าความกว้างและความยาวของการ์ด"
+                  >
+                    <ArrowLeftRight className="w-3 h-3" />
+                    <span>สลับแนว (กว้าง ↔ ยาว)</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      ความกว้างการ์ด (Width - mm)
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="20"
+                        max="300"
+                        value={frontWidthMm}
+                        onChange={(e) => {
+                          const parsed = parseFloat(e.target.value);
+                          if (!Number.isNaN(parsed) && parsed > 0) {
+                            updateFrontField('cardWidthMm', Math.min(300, parsed));
+                          }
+                        }}
+                        onBlur={(e) => {
+                          const parsed = parseFloat(e.target.value);
+                          updateFrontField('cardWidthMm', clampCardDim(parsed, 85.6));
+                        }}
+                        className="w-full px-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-[11px] font-semibold text-slate-500 shrink-0">mm</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      ความยาว / ความสูงการ์ด (Length - mm)
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="20"
+                        max="300"
+                        value={frontHeightMm}
+                        onChange={(e) => {
+                          const parsed = parseFloat(e.target.value);
+                          if (!Number.isNaN(parsed) && parsed > 0) {
+                            updateFrontField('cardHeightMm', Math.min(300, parsed));
+                          }
+                        }}
+                        onBlur={(e) => {
+                          const parsed = parseFloat(e.target.value);
+                          updateFrontField('cardHeightMm', clampCardDim(parsed, 54.0));
+                        }}
+                        className="w-full px-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-[11px] font-semibold text-slate-500 shrink-0">mm</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-slate-500 font-medium">ขนาดสำเร็จรูป:</span>
+                  {CARD_SIZE_PRESETS.map((preset) => {
+                    const isPresetActive =
+                      Math.abs(frontWidthMm - preset.width) < 0.05 &&
+                      Math.abs(frontHeightMm - preset.height) < 0.05;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setCurrentFront((prev) => ({
+                            ...prev,
+                            cardWidthMm: preset.width,
+                            cardHeightMm: preset.height,
+                          }));
+                          setHasChanges(true);
+                        }}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors cursor-pointer ${
+                          isPresetActive
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-700'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1378,9 +1517,9 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
                       <input
                         type="range"
                         min="0"
-                        max="80"
+                        max={frontWidthMm}
                         step="0.5"
-                        value={selectedElement.x}
+                        value={Math.min(selectedElement.x, frontWidthMm)}
                         onChange={(e) =>
                           updateElementStyle(selectedKey, 'x', parseFloat(e.target.value))
                         }
@@ -1390,7 +1529,7 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
                         type="number"
                         step="0.5"
                         min="0"
-                        max="85.6"
+                        max={frontWidthMm}
                         value={selectedElement.x}
                         onChange={(e) =>
                           updateElementStyle(
@@ -1410,9 +1549,9 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
                       <input
                         type="range"
                         min="0"
-                        max="50"
+                        max={frontHeightMm}
                         step="0.5"
-                        value={selectedElement.y}
+                        value={Math.min(selectedElement.y, frontHeightMm)}
                         onChange={(e) =>
                           updateElementStyle(selectedKey, 'y', parseFloat(e.target.value))
                         }
@@ -1422,7 +1561,7 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
                         type="number"
                         step="0.5"
                         min="0"
-                        max="54.0"
+                        max={frontHeightMm}
                         value={selectedElement.y}
                         onChange={(e) =>
                           updateElementStyle(
@@ -1453,7 +1592,7 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
                           type="number"
                           step="0.5"
                           min="5"
-                          max="50"
+                          max={frontWidthMm}
                           value={selectedElement.width || 25}
                           onChange={(e) =>
                             updateElementStyle(
@@ -1473,7 +1612,7 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
                           type="number"
                           step="0.5"
                           min="5"
-                          max="50"
+                          max={frontHeightMm}
                           value={selectedElement.height || 29}
                           onChange={(e) =>
                             updateElementStyle(
@@ -2435,11 +2574,124 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
 
             <div className="w-full mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 flex-wrap gap-2">
               <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-mono font-medium">
-                85.6 mm × 54.0 mm (CR80)
+                {backWidthMm.toFixed(1)} mm × {backHeightMm.toFixed(1)} mm
+                {backWidthMm === 85.6 && backHeightMm === 54.0
+                  ? ' (CR80)'
+                  : backWidthMm === 54.0 && backHeightMm === 85.6
+                  ? ' (CR80 แนวตั้ง)'
+                  : ' (กำหนดเอง)'}
               </span>
               <span className="font-sarabun text-[11px]">
                 รูปแบบที่บันทึกไว้จะแสดงให้เลือกใช้ทันทีในหน้า "พิมพ์หลังบัตร"
               </span>
+            </div>
+
+            {/* Back Card Dimensions (Width x Length/Height) Settings Box */}
+            <div className="w-full mt-4 p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <Maximize2 className="w-4 h-4 text-indigo-600" />
+                  ตั้งค่าขนาดการ์ดหลังบัตร (ความกว้าง × ความยาว)
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateBackDesign({
+                      cardWidthMm: backHeightMm,
+                      cardHeightMm: backWidthMm,
+                    })
+                  }
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-[11px] font-semibold rounded-lg border border-slate-300 transition-colors cursor-pointer"
+                  title="สลับค่าความกว้างและความยาวของการ์ด"
+                >
+                  <ArrowLeftRight className="w-3 h-3" />
+                  <span>สลับแนว (กว้าง ↔ ยาว)</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    ความกว้างการ์ด (Width - mm)
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="20"
+                      max="300"
+                      value={backWidthMm}
+                      onChange={(e) => {
+                        const parsed = parseFloat(e.target.value);
+                        if (!Number.isNaN(parsed) && parsed > 0) {
+                          updateBackDesign({ cardWidthMm: Math.min(300, parsed) });
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const parsed = parseFloat(e.target.value);
+                        updateBackDesign({ cardWidthMm: clampCardDim(parsed, 85.6) });
+                      }}
+                      className="w-full px-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-semibold text-slate-500 shrink-0">mm</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    ความยาว / ความสูงการ์ด (Length - mm)
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="20"
+                      max="300"
+                      value={backHeightMm}
+                      onChange={(e) => {
+                        const parsed = parseFloat(e.target.value);
+                        if (!Number.isNaN(parsed) && parsed > 0) {
+                          updateBackDesign({ cardHeightMm: Math.min(300, parsed) });
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const parsed = parseFloat(e.target.value);
+                        updateBackDesign({ cardHeightMm: clampCardDim(parsed, 54.0) });
+                      }}
+                      className="w-full px-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] font-semibold text-slate-500 shrink-0">mm</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                <span className="text-[10px] text-slate-500 font-medium">ขนาดสำเร็จรูป:</span>
+                {CARD_SIZE_PRESETS.map((preset) => {
+                  const isPresetActive =
+                    Math.abs(backWidthMm - preset.width) < 0.05 &&
+                    Math.abs(backHeightMm - preset.height) < 0.05;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() =>
+                        updateBackDesign({
+                          cardWidthMm: preset.width,
+                          cardHeightMm: preset.height,
+                        })
+                      }
+                      className={`px-2 py-1 rounded-lg text-[10px] font-semibold border transition-colors cursor-pointer ${
+                        isPresetActive
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-700'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

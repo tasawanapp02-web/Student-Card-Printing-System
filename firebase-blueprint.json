@@ -114,9 +114,17 @@
           "type": "boolean",
           "description": "Render PNG overlay above guardian photo."
         },
+        "cardWidthMm": {
+          "type": "number",
+          "description": "Card width in millimeters (default 85.6mm for CR80)."
+        },
+        "cardHeightMm": {
+          "type": "number",
+          "description": "Card length/height in millimeters (default 54.0mm for CR80)."
+        },
         "elements": {
           "type": "object",
-          "description": "Element positions and styles on the CR80 front card."
+          "description": "Element positions and styles on the front card."
         },
         "createdAt": {
           "type": "string",
@@ -234,6 +242,14 @@
           "type": "string",
           "description": "Label under the signature line.",
           "maxLength": 150
+        },
+        "cardWidthMm": {
+          "type": "number",
+          "description": "Back card width in millimeters (default 85.6mm for CR80)."
+        },
+        "cardHeightMm": {
+          "type": "number",
+          "description": "Back card length/height in millimeters (default 54.0mm for CR80)."
         },
         "createdAt": {
           "type": "string",

@@ -56,8 +56,8 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
   className = '',
   isPrintMode = false,
   showBleedGuide = false,
-  cardWidthMm = 85.6,
-  cardHeightMm = 54.0,
+  cardWidthMm,
+  cardHeightMm,
   hideBorderAndShadow = false,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -111,10 +111,19 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
       .catch((err) => console.error('QR code error', err));
   }, [card?.qrCodeText, displayStudent.studentId, displayGuardian.firstName, displayExpiryDate]);
 
-  // Standard CR80 Card Dimensions: 85.6mm x 54.0mm
-  // In screen pixels base: 85.6mm * 3.7795 px/mm approx 323.5px x 204.1px
-  const baseWidthPx = 323.5;
-  const baseHeightPx = 204.1;
+  // Default CR80 Card Dimensions: 85.6mm x 54.0mm
+  // Screen pixel conversion ratio: 323.5px / 85.6mm (~3.7792 px/mm)
+  const designWidthMm =
+    design.cardWidthMm && design.cardWidthMm > 0 ? design.cardWidthMm : 85.6;
+  const designHeightMm =
+    design.cardHeightMm && design.cardHeightMm > 0 ? design.cardHeightMm : 54.0;
+  const effectiveWidthMm =
+    cardWidthMm && cardWidthMm > 0 ? cardWidthMm : designWidthMm;
+  const effectiveHeightMm =
+    cardHeightMm && cardHeightMm > 0 ? cardHeightMm : designHeightMm;
+  const MM_TO_PX = 323.5 / 85.6;
+  const baseWidthPx = effectiveWidthMm * MM_TO_PX;
+  const baseHeightPx = effectiveHeightMm * MM_TO_PX;
 
   const el = design.elements;
   const isBgAbovePhoto = design.bgLayerAbovePhoto !== false;
@@ -125,8 +134,8 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
       <div
         className={`relative overflow-hidden print-card-cr80 bg-white ${className}`}
         style={{
-          width: `${cardWidthMm}mm`,
-          height: `${cardHeightMm}mm`,
+          width: `${effectiveWidthMm}mm`,
+          height: `${effectiveHeightMm}mm`,
           boxSizing: 'border-box',
           backgroundColor: '#ffffff',
           fontFamily: "'Prompt', 'Sarabun', sans-serif",
@@ -249,10 +258,10 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           <div
             className="absolute overflow-hidden shadow-xs flex items-center justify-center bg-white"
             style={{
-              left: `${(el.guardianPhoto.x / 85.6) * 100}%`,
-              top: `${(el.guardianPhoto.y / 54.0) * 100}%`,
-              width: `${((el.guardianPhoto.width || 25) / 85.6) * 100}%`,
-              height: `${((el.guardianPhoto.height || 29) / 54.0) * 100}%`,
+              left: `${(el.guardianPhoto.x / designWidthMm) * 100}%`,
+              top: `${(el.guardianPhoto.y / designHeightMm) * 100}%`,
+              width: `${((el.guardianPhoto.width || 25) / designWidthMm) * 100}%`,
+              height: `${((el.guardianPhoto.height || 29) / designHeightMm) * 100}%`,
               borderRadius: `${el.guardianPhoto.borderRadius || 4}px`,
               border: `${el.guardianPhoto.borderWidth || 1.5}px solid ${el.guardianPhoto.borderColor || '#ffffff'}`,
               zIndex: isBgAbovePhoto ? 10 : 25,
@@ -304,10 +313,10 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           <div
             className="absolute flex items-center justify-center overflow-hidden"
             style={{
-              left: `${(el.schoolLogo.x / 85.6) * 100}%`,
-              top: `${(el.schoolLogo.y / 54.0) * 100}%`,
-              width: `${((el.schoolLogo.width || 14) / 85.6) * 100}%`,
-              height: `${((el.schoolLogo.height || 14) / 54.0) * 100}%`,
+              left: `${(el.schoolLogo.x / designWidthMm) * 100}%`,
+              top: `${(el.schoolLogo.y / designHeightMm) * 100}%`,
+              width: `${((el.schoolLogo.width || 14) / designWidthMm) * 100}%`,
+              height: `${((el.schoolLogo.height || 14) / designHeightMm) * 100}%`,
               borderRadius: el.schoolLogo.borderRadius ? `${el.schoolLogo.borderRadius}px` : undefined,
               zIndex: 30,
             }}
@@ -343,8 +352,8 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           <div
             className="absolute leading-tight whitespace-nowrap drop-shadow-xs"
             style={{
-              left: `${(el.title.x / 85.6) * 100}%`,
-              top: `${(el.title.y / 54.0) * 100}%`,
+              left: `${(el.title.x / designWidthMm) * 100}%`,
+              top: `${(el.title.y / designHeightMm) * 100}%`,
               fontSize: `${el.title.fontSize * 0.9}pt`,
               fontWeight: resolveFontWeight(el.title.fontWeight, 500),
               fontFamily: el.title.fontFamily || "'Prompt', sans-serif",
@@ -362,8 +371,8 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           <div
             className="absolute leading-tight whitespace-nowrap"
             style={{
-              left: `${(el.subtitle.x / 85.6) * 100}%`,
-              top: `${(el.subtitle.y / 54.0) * 100}%`,
+              left: `${(el.subtitle.x / designWidthMm) * 100}%`,
+              top: `${(el.subtitle.y / designHeightMm) * 100}%`,
               fontSize: `${el.subtitle.fontSize * 0.9}pt`,
               fontWeight: resolveFontWeight(el.subtitle.fontWeight, 400),
               fontFamily: el.subtitle.fontFamily || "'Sarabun', sans-serif",
@@ -381,8 +390,8 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           <div
             className="absolute whitespace-nowrap"
             style={{
-              left: `${(el.guardianName.x / 85.6) * 100}%`,
-              top: `${(el.guardianName.y / 54.0) * 100}%`,
+              left: `${(el.guardianName.x / designWidthMm) * 100}%`,
+              top: `${(el.guardianName.y / designHeightMm) * 100}%`,
               fontSize: `${el.guardianName.fontSize * 0.9}pt`,
               fontWeight: resolveFontWeight(el.guardianName.fontWeight, 500),
               fontFamily: el.guardianName.fontFamily || "'Prompt', sans-serif",
@@ -435,8 +444,8 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           <div
             className="absolute whitespace-nowrap"
             style={{
-              left: `${(el.studentName.x / 85.6) * 100}%`,
-              top: `${(el.studentName.y / 54.0) * 100}%`,
+              left: `${(el.studentName.x / designWidthMm) * 100}%`,
+              top: `${(el.studentName.y / designHeightMm) * 100}%`,
               fontSize: `${el.studentName.fontSize * 0.9}pt`,
               fontWeight: resolveFontWeight(el.studentName.fontWeight, 400),
               fontFamily: el.studentName.fontFamily || "'Sarabun', sans-serif",
@@ -477,8 +486,8 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           <div
             className="absolute whitespace-nowrap"
             style={{
-              left: `${(el.studentClass.x / 85.6) * 100}%`,
-              top: `${(el.studentClass.y / 54.0) * 100}%`,
+              left: `${(el.studentClass.x / designWidthMm) * 100}%`,
+              top: `${(el.studentClass.y / designHeightMm) * 100}%`,
               fontSize: `${el.studentClass.fontSize * 0.9}pt`,
               fontWeight: resolveFontWeight(el.studentClass.fontWeight, 400),
               fontFamily: el.studentClass.fontFamily || "'Sarabun', sans-serif",
@@ -497,8 +506,8 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           <div
             className="absolute whitespace-nowrap"
             style={{
-              left: `${(el.studentId.x / 85.6) * 100}%`,
-              top: `${(el.studentId.y / 54.0) * 100}%`,
+              left: `${(el.studentId.x / designWidthMm) * 100}%`,
+              top: `${(el.studentId.y / designHeightMm) * 100}%`,
               fontSize: `${el.studentId.fontSize * 0.9}pt`,
               fontWeight: el.studentId.fontWeight === 'bold' ? 800 : resolveFontWeight(el.studentId.fontWeight, 500),
               fontFamily:
@@ -537,10 +546,10 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           <div
             className="absolute bg-white p-0.5 rounded-sm shadow-xs flex items-center justify-center overflow-hidden"
             style={{
-              left: `${(el.qrCode.x / 85.6) * 100}%`,
-              top: `${(el.qrCode.y / 54.0) * 100}%`,
-              width: `${((el.qrCode.width || 13) / 85.6) * 100}%`,
-              height: `${((el.qrCode.height || 13) / 54.0) * 100}%`,
+              left: `${(el.qrCode.x / designWidthMm) * 100}%`,
+              top: `${(el.qrCode.y / designHeightMm) * 100}%`,
+              width: `${((el.qrCode.width || 13) / designWidthMm) * 100}%`,
+              height: `${((el.qrCode.height || 13) / designHeightMm) * 100}%`,
               borderRadius: el.qrCode.borderRadius ? `${el.qrCode.borderRadius}px` : undefined,
               zIndex: 30,
             }}
@@ -573,8 +582,8 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           <div
             className="absolute leading-tight whitespace-nowrap"
             style={{
-              left: `${(el.issueDate.x / 85.6) * 100}%`,
-              top: `${(el.issueDate.y / 54.0) * 100}%`,
+              left: `${(el.issueDate.x / designWidthMm) * 100}%`,
+              top: `${(el.issueDate.y / designHeightMm) * 100}%`,
               fontSize: `${el.issueDate.fontSize * 0.9}pt`,
               fontWeight: resolveFontWeight(el.issueDate.fontWeight, 400),
               fontFamily: el.issueDate.fontFamily || "'Sarabun', sans-serif",
@@ -592,8 +601,8 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
           <div
             className="absolute leading-tight whitespace-nowrap"
             style={{
-              left: `${(el.expiryDate.x / 85.6) * 100}%`,
-              top: `${(el.expiryDate.y / 54.0) * 100}%`,
+              left: `${(el.expiryDate.x / designWidthMm) * 100}%`,
+              top: `${(el.expiryDate.y / designHeightMm) * 100}%`,
               fontSize: `${el.expiryDate.fontSize * 0.9}pt`,
               fontWeight: resolveFontWeight(el.expiryDate.fontWeight, 500),
               fontFamily: el.expiryDate.fontFamily || "'Sarabun', sans-serif",

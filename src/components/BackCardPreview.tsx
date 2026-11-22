@@ -20,19 +20,28 @@ export const BackCardPreview: React.FC<BackCardPreviewProps> = ({
   isPrintMode = false,
   showBleedGuide = false,
   rotate180 = false,
-  cardWidthMm = 85.6,
-  cardHeightMm = 54.0,
+  cardWidthMm,
+  cardHeightMm,
 }) => {
-  const baseWidthPx = 323.5;
-  const baseHeightPx = 204.1;
+  const designWidthMm =
+    design.cardWidthMm && design.cardWidthMm > 0 ? design.cardWidthMm : 85.6;
+  const designHeightMm =
+    design.cardHeightMm && design.cardHeightMm > 0 ? design.cardHeightMm : 54.0;
+  const effectiveWidthMm =
+    cardWidthMm && cardWidthMm > 0 ? cardWidthMm : designWidthMm;
+  const effectiveHeightMm =
+    cardHeightMm && cardHeightMm > 0 ? cardHeightMm : designHeightMm;
+  const MM_TO_PX = 323.5 / 85.6;
+  const baseWidthPx = effectiveWidthMm * MM_TO_PX;
+  const baseHeightPx = effectiveHeightMm * MM_TO_PX;
 
   if (isPrintMode) {
     return (
       <div
         className={`relative overflow-hidden print-card-cr80 ${className}`}
         style={{
-          width: `${cardWidthMm}mm`,
-          height: `${cardHeightMm}mm`,
+          width: `${effectiveWidthMm}mm`,
+          height: `${effectiveHeightMm}mm`,
           boxSizing: 'border-box',
           backgroundColor: design.bgColor || '#ffffff',
           fontFamily: "'Prompt', 'Sarabun', sans-serif",
@@ -110,7 +119,7 @@ export const BackCardPreview: React.FC<BackCardPreviewProps> = ({
         <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-400 p-4 text-center">
           <div className="text-[9pt] font-bold text-slate-600">ยังไม่ได้อัปโหลดภาพหลังบัตร</div>
           <div className="text-[7pt] mt-1 font-sarabun">
-            กรุณาอัปโหลดไฟล์ .PNG หรือ .JPG ขนาด CR80 (85.6 × 54.0 มม.)
+            กรุณาอัปโหลดไฟล์ .PNG หรือ .JPG ขนาด ({effectiveWidthMm.toFixed(1)} × {effectiveHeightMm.toFixed(1)} มม.)
           </div>
         </div>
       );
