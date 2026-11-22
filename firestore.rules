@@ -315,7 +315,7 @@ service cloud.firestore {
         ])
         && isValidId(data.id) && data.id == docId
         && isValidId(data.ownerId)
-        && data.category in ['front_bg', 'back_bg', 'guardian_photo', 'sample_photo']
+        && data.category in ['front_bg', 'back_bg', 'guardian_photo', 'sample_photo', 'qr_code', 'school_logo']
         && data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 256
         && data.contentType in ['image/webp', 'image/jpeg', 'image/png', 'image/svg+xml']
         && data.width is int && data.width >= 1 && data.width <= 4096

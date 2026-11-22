@@ -411,6 +411,7 @@ async function ensureWithinDataUrlLimit(
 
 const cardCompressionCache = new WeakMap<File, Promise<CompressedImageResult>>();
 const avatarCompressionCache = new WeakMap<File, Promise<CompressedImageResult>>();
+const elementCompressionCache = new WeakMap<File, Promise<CompressedImageResult>>();
 
 async function runCompressCardImage(file: File): Promise<CompressedImageResult> {
   validateImageUploadFile(file);
@@ -633,6 +634,116 @@ export function compressAvatarPhoto(file: File): Promise<CompressedImageResult> 
     throw err;
   });
   avatarCompressionCache.set(file, promise);
+  return promise;
+}
+
+async function runCompressElementImage(file: File): Promise<CompressedImageResult> {
+  validateImageUploadFile(file);
+  if (file.type === 'image/svg+xml') {
+    return processSvgFile(file, 512, 512);
+  }
+
+  const decoded = await decodeImageFast(file);
+  try {
+    const MAX_W = 640;
+    const MAX_H = 640;
+    let targetW = decoded.width || MAX_W;
+    let targetH = decoded.height || MAX_H;
+
+    const withinBounds = targetW <= MAX_W && targetH <= MAX_H;
+    if (
+      withinBounds &&
+      file.size <= 120000 &&
+      (file.type === 'image/webp' || file.type === 'image/jpeg' || file.type === 'image/png')
+    ) {
+      const directDataUrl = await readFileAsDataUrl(file);
+      if (directDataUrl.length <= MAX_FIRESTORE_DATAURL_CHARS) {
+        return {
+          blob: file,
+          dataUrl: directDataUrl,
+          contentType: file.type,
+          extension: extensionFromMime(file.type),
+          originalSize: file.size,
+          compressedSize: file.size,
+          width: targetW,
+          height: targetH,
+          wasSvg: false,
+        };
+      }
+    }
+
+    if (targetW > MAX_W || targetH > MAX_H) {
+      const ratio = Math.min(MAX_W / targetW, MAX_H / targetH);
+      targetW = Math.max(1, Math.round(targetW * ratio));
+      targetH = Math.max(1, Math.round(targetH * ratio));
+    }
+
+    const transparent = hasAlphaTransparencyFast(decoded.source, file.type, targetW, targetH);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      const fallbackUrl = await readFileAsDataUrl(file);
+      return {
+        blob: file,
+        dataUrl: fallbackUrl,
+        contentType: file.type || 'image/png',
+        extension: extensionFromMime(file.type || 'image/png'),
+        originalSize: file.size,
+        compressedSize: file.size,
+        width: targetW,
+        height: targetH,
+        wasSvg: false,
+      };
+    }
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.clearRect(0, 0, targetW, targetH);
+    ctx.drawImage(decoded.source, 0, 0, targetW, targetH);
+
+    const encodedBlob = await encodeSinglePass(canvas, transparent, transparent ? 0.88 : 0.84);
+    let chosenBlob = encodedBlob || file;
+
+    if (
+      withinBounds &&
+      file.size < chosenBlob.size &&
+      (file.type === 'image/webp' || file.type === 'image/jpeg' || file.type === 'image/png')
+    ) {
+      chosenBlob = file;
+    }
+
+    const bounded = await ensureWithinDataUrlLimit(canvas, decoded.source, chosenBlob, transparent);
+    const contentType = bounded.blob.type || 'image/webp';
+    return {
+      blob: bounded.blob,
+      dataUrl: bounded.dataUrl,
+      contentType,
+      extension: extensionFromMime(contentType),
+      originalSize: file.size,
+      compressedSize: bounded.blob.size,
+      width: bounded.width,
+      height: bounded.height,
+      wasSvg: false,
+    };
+  } finally {
+    decoded.release();
+  }
+}
+
+/**
+ * Compresses card element images (QR Code / School Logo) while preserving alpha transparency.
+ */
+export function compressElementImage(file: File): Promise<CompressedImageResult> {
+  const existing = elementCompressionCache.get(file);
+  if (existing) return existing;
+  const promise = runCompressElementImage(file).catch((err) => {
+    elementCompressionCache.delete(file);
+    throw err;
+  });
+  elementCompressionCache.set(file, promise);
   return promise;
 }
 

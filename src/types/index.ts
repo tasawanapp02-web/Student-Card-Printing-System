@@ -44,7 +44,13 @@ export interface Student {
   updatedAt: string;
 }
 
-export type ImageAssetCategory = 'front_bg' | 'back_bg' | 'guardian_photo' | 'sample_photo';
+export type ImageAssetCategory =
+  | 'front_bg'
+  | 'back_bg'
+  | 'guardian_photo'
+  | 'sample_photo'
+  | 'qr_code'
+  | 'school_logo';
 
 export interface ImageAsset {
   id: string;
@@ -129,6 +135,10 @@ export interface CardElementStyle {
   // Student Class formatting
   classDisplayMode?: ClassDisplayMode;
   customText?: string;
+  // Custom uploaded image for element (e.g. qrCode, schoolLogo) stored in Firestore
+  imageUrl?: string;
+  imageStoragePath?: string;
+  imageAssetId?: string;
 }
 
 export interface CardDesignConfig {

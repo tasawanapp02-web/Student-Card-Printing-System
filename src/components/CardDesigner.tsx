@@ -47,6 +47,7 @@ import {
   Pencil,
   AlertTriangle,
   FolderOpen,
+  Database,
 } from 'lucide-react';
 
 interface CardDesignerProps {
@@ -133,9 +134,14 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
     storageService.getDesignerSamplePhoto()
   );
   const [guardians, setGuardians] = useState<Guardian[]>(() => storageService.getGuardians());
+  const [imageAssets, setImageAssets] = useState<ImageAsset[]>(() =>
+    storageService.getImageAssets()
+  );
   const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
+  const [confirmDeleteAssetId, setConfirmDeleteAssetId] = useState<string | null>(null);
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
   const [imagePickerTarget, setImagePickerTarget] = useState<
-    null | 'frontBg' | 'backBg' | 'samplePhoto'
+    null | 'frontBg' | 'backBg' | 'samplePhoto' | 'qrCode' | 'schoolLogo'
   >(null);
 
   useEffect(() => {
@@ -144,6 +150,7 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
       setBackDesigns(storageService.getBackDesigns());
       setGuardians(storageService.getGuardians());
       setSampleGuardianPhoto(storageService.getDesignerSamplePhoto());
+      setImageAssets(storageService.getImageAssets());
     });
   }, []);
 
@@ -306,6 +313,104 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
     setSampleGuardianPhoto('');
     storageService.saveDesignerSamplePhoto(null);
     onNotify('กลับไปใช้รูปตัวอย่างเริ่มต้นของระบบแล้ว', 'info');
+  };
+
+  const handleElementImageUpload = async (
+    elementKey: 'qrCode' | 'schoolLogo',
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setIsUploadingImage(true);
+    try {
+      const uploaded = await storageService.uploadCardElementImage(
+        file,
+        elementKey,
+        currentFront.id
+      );
+      patchElementStyle(elementKey, {
+        imageUrl: uploaded.url,
+        imageStoragePath: uploaded.storagePath,
+        imageAssetId: uploaded.assetId,
+      });
+      setImageAssets(storageService.getImageAssets());
+      const label = elementKey === 'qrCode' ? 'QR Code ตรวจสอบสิทธิ์' : 'ตราสัญลักษณ์ / ตราโรงเรียน';
+      onNotify(
+        `บีบอัดและบันทึกรูปภาพ ${label} ลง Firestore สำเร็จ (${formatFileSize(uploaded.originalSize)} → ${formatFileSize(uploaded.compressedSize)}) กรุณากดบันทึกเพื่ออัปเดตแม่แบบ`,
+        'success'
+      );
+    } catch (err) {
+      onNotify(
+        err instanceof Error ? err.message : 'ไม่สามารถอัปโหลดไฟล์ภาพได้ กรุณาลองใหม่อีกครั้ง',
+        'error'
+      );
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleSelectElementAsset = (
+    elementKey: 'qrCode' | 'schoolLogo',
+    asset: ImageAsset
+  ) => {
+    const refUrl = asset.storageUrl || `firestore-asset://${asset.id}`;
+    patchElementStyle(elementKey, {
+      imageUrl: refUrl,
+      imageStoragePath: asset.storagePath || '',
+      imageAssetId: asset.id,
+    });
+    const label = elementKey === 'qrCode' ? 'QR Code' : 'ตราโรงเรียน';
+    onNotify(
+      `เลือกรูปภาพ "${asset.fileName}" สำหรับ ${label} แล้ว กรุณากดบันทึกเพื่ออัปเดตแม่แบบ`,
+      'success'
+    );
+  };
+
+  const handleClearElementImage = (elementKey: 'qrCode' | 'schoolLogo') => {
+    patchElementStyle(elementKey, {
+      imageUrl: '',
+      imageStoragePath: '',
+      imageAssetId: '',
+    });
+    const label =
+      elementKey === 'qrCode'
+        ? 'QR Code อัตโนมัติของระบบ'
+        : 'ตราสัญลักษณ์เริ่มต้นของระบบ';
+    onNotify(`กลับไปใช้ ${label} แล้ว`, 'info');
+  };
+
+  const handleDeleteElementAsset = async (asset: ImageAsset) => {
+    setDeletingAssetId(asset.id);
+    try {
+      await storageService.deleteImageAsset(asset.id);
+      const assetRef = `firestore-asset://${asset.id}`;
+      (['qrCode', 'schoolLogo'] as const).forEach((elKey) => {
+        const el = currentFront.elements[elKey];
+        if (
+          el &&
+          (el.imageAssetId === asset.id ||
+            el.imageUrl === assetRef ||
+            (asset.storageUrl && el.imageUrl === asset.storageUrl))
+        ) {
+          patchElementStyle(elKey, {
+            imageUrl: '',
+            imageStoragePath: '',
+            imageAssetId: '',
+          });
+        }
+      });
+      setConfirmDeleteAssetId(null);
+      setImageAssets(storageService.getImageAssets());
+      onNotify(`ลบรูปภาพ "${asset.fileName}" ออกจาก Firestore แล้ว`, 'info');
+    } catch (err) {
+      onNotify(
+        err instanceof Error ? err.message : 'ไม่สามารถลบรูปภาพออกจาก Firestore ได้',
+        'error'
+      );
+    } finally {
+      setDeletingAssetId(null);
+    }
   };
 
   const handleFrontBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1520,6 +1625,249 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
                         </div>
                       </div>
                     )}
+
+                    {(selectedKey === 'qrCode' || selectedKey === 'schoolLogo') &&
+                      (() => {
+                        const elementKey = selectedKey;
+                        const targetCategory =
+                          elementKey === 'qrCode' ? 'qr_code' : 'school_logo';
+                        const categoryAssets = imageAssets.filter(
+                          (a) => a.category === targetCategory
+                        );
+                        const hasCustomImage = Boolean(
+                          selectedElement.imageUrl || selectedElement.imageAssetId
+                        );
+                        const resolvedCurrentSrc = hasCustomImage
+                          ? storageService.resolveImageSrc(
+                              selectedElement.imageUrl,
+                              selectedElement.imageAssetId
+                            )
+                          : '';
+                        const elementTitle =
+                          elementKey === 'qrCode'
+                            ? 'รูปภาพ QR Code ตรวจสอบสิทธิ์'
+                            : 'รูปภาพตราสัญลักษณ์ / ตราโรงเรียน';
+
+                        return (
+                          <div className="space-y-3 pt-2">
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                                  มุมโค้งมน (px)
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="30"
+                                  value={selectedElement.borderRadius ?? 0}
+                                  onChange={(e) =>
+                                    updateElementStyle(
+                                      elementKey,
+                                      'borderRadius',
+                                      parseInt(e.target.value, 10) || 0
+                                    )
+                                  }
+                                  className="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white font-mono"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Upload & Active Preview Box */}
+                            <div className="p-3 bg-white rounded-xl border border-blue-200/80 space-y-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-bold text-slate-800">
+                                  {elementTitle}
+                                </span>
+                                {hasCustomImage && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleClearElementImage(elementKey)}
+                                    className="text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                                  >
+                                    ใช้ค่าเริ่มต้นระบบ
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <div className="w-14 h-14 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden shrink-0 flex items-center justify-center p-1">
+                                  {resolvedCurrentSrc ? (
+                                    <img
+                                      src={resolvedCurrentSrc}
+                                      alt={elementTitle}
+                                      className="w-full h-full object-contain"
+                                    />
+                                  ) : (
+                                    <span className="text-[9px] text-slate-400 text-center leading-tight px-1 font-sarabun">
+                                      {elementKey === 'qrCode'
+                                        ? 'QR อัตโนมัติ'
+                                        : 'ตราเริ่มต้น'}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex-1 space-y-1.5 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <label
+                                      className={`cursor-pointer flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200 transition-colors ${
+                                        isUploadingImage ? 'opacity-60 pointer-events-none' : ''
+                                      }`}
+                                    >
+                                      <Upload className="w-3.5 h-3.5" />
+                                      <span>
+                                        {isUploadingImage
+                                          ? 'กำลังอัปโหลด...'
+                                          : 'อัปโหลดไปยัง Firestore'}
+                                      </span>
+                                      <input
+                                        type="file"
+                                        accept=".png,.jpg,.jpeg,.webp,.svg,image/*"
+                                        disabled={isUploadingImage}
+                                        onChange={(e) => handleElementImageUpload(elementKey, e)}
+                                        className="hidden"
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => setImagePickerTarget(elementKey)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold rounded-lg border border-slate-300 cursor-pointer"
+                                    >
+                                      <FolderOpen className="w-3.5 h-3.5 text-blue-600" />
+                                      <span>คลังรูปทั้งหมด</span>
+                                    </button>
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 font-sarabun leading-snug">
+                                    รองรับ PNG (พื้นใส), JPG, WebP, SVG บันทึกอัตโนมัติใน Firestore (image_assets)
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Uploaded Images Selection Box */}
+                            <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                                  <Database className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>
+                                    รูปภาพที่ถูกอัปโหลดไว้ ({categoryAssets.length})
+                                  </span>
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-sarabun">
+                                  คลิกเพื่อเลือกใช้ทันที
+                                </span>
+                              </div>
+
+                              {categoryAssets.length === 0 ? (
+                                <div className="py-5 px-3 text-center rounded-lg border border-dashed border-slate-200 bg-slate-50/70">
+                                  <ImageIcon className="w-6 h-6 text-slate-300 mx-auto mb-1" />
+                                  <div className="text-[11px] font-semibold text-slate-600">
+                                    ยังไม่มีรูปภาพที่อัปโหลดในหมวดนี้
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 font-sarabun mt-0.5">
+                                    อัปโหลดรูปด้านบนเพื่อจัดเก็บใน Firestore และเลือกใช้งานซ้ำได้จากกล่องนี้
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-0.5">
+                                  {categoryAssets.map((asset) => {
+                                    const thumbSrc =
+                                      asset.dataUrl ||
+                                      asset.storageUrl ||
+                                      storageService.resolveImageSrc(
+                                        `firestore-asset://${asset.id}`,
+                                        asset.id
+                                      );
+                                    const isActive =
+                                      selectedElement.imageAssetId === asset.id ||
+                                      selectedElement.imageUrl === `firestore-asset://${asset.id}` ||
+                                      (Boolean(asset.storageUrl) &&
+                                        selectedElement.imageUrl === asset.storageUrl);
+                                    const isConfirming = confirmDeleteAssetId === asset.id;
+
+                                    return (
+                                      <div
+                                        key={asset.id}
+                                        className={`group rounded-lg border transition-all overflow-hidden flex flex-col justify-between ${
+                                          isActive
+                                            ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/30'
+                                            : 'border-slate-200 bg-slate-50/50 hover:border-blue-300'
+                                        }`}
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleSelectElementAsset(elementKey, asset)
+                                          }
+                                          className="relative h-16 w-full bg-white flex items-center justify-center p-1.5 cursor-pointer"
+                                          title={`เลือกใช้ ${asset.fileName}`}
+                                        >
+                                          {thumbSrc ? (
+                                            <img
+                                              src={thumbSrc}
+                                              alt={asset.fileName}
+                                              className="max-w-full max-h-full object-contain"
+                                            />
+                                          ) : (
+                                            <ImageIcon className="w-5 h-5 text-slate-300" />
+                                          )}
+                                          {isActive && (
+                                            <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-2xs">
+                                              <Check className="w-2.5 h-2.5" />
+                                            </span>
+                                          )}
+                                        </button>
+
+                                        <div className="px-1.5 py-1.5 border-t border-slate-100 bg-white space-y-1">
+                                          <div
+                                            className="text-[10px] font-semibold text-slate-700 truncate"
+                                            title={asset.fileName}
+                                          >
+                                            {asset.fileName}
+                                          </div>
+                                          <div className="flex items-center justify-between gap-1">
+                                            <span className="text-[9px] text-slate-400 font-mono truncate">
+                                              {formatFileSize(asset.compressedSize)}
+                                            </span>
+
+                                            {isConfirming ? (
+                                              <div className="flex items-center gap-1">
+                                                <button
+                                                  type="button"
+                                                  disabled={deletingAssetId === asset.id}
+                                                  onClick={() => handleDeleteElementAsset(asset)}
+                                                  className="px-1.5 py-0.5 text-[9px] font-bold bg-rose-600 text-white rounded cursor-pointer disabled:opacity-50"
+                                                >
+                                                  {deletingAssetId === asset.id ? '...' : 'ลบ'}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setConfirmDeleteAssetId(null)}
+                                                  className="px-1 py-0.5 text-[9px] font-semibold text-slate-500 hover:text-slate-700 cursor-pointer"
+                                                >
+                                                  ยกเลิก
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                onClick={() => setConfirmDeleteAssetId(asset.id)}
+                                                className="p-0.5 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                                                title="ลบรูปภาพออกจาก Firestore"
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                   </div>
                 )}
 
@@ -2581,6 +2929,10 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
             ? 'back_bg'
             : imagePickerTarget === 'samplePhoto'
             ? 'sample_photo'
+            : imagePickerTarget === 'qrCode'
+            ? 'qr_code'
+            : imagePickerTarget === 'schoolLogo'
+            ? 'school_logo'
             : 'all'
         }
         title={
@@ -2588,6 +2940,10 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
             ? 'เลือกภาพพื้นหลังหน้าบัตรจากฐานข้อมูล Firebase'
             : imagePickerTarget === 'backBg'
             ? 'เลือกภาพพื้นหลังหลังบัตรจากฐานข้อมูล Firebase'
+            : imagePickerTarget === 'qrCode'
+            ? 'เลือกรูปภาพ QR Code ตรวจสอบสิทธิ์จากฐานข้อมูล Firebase'
+            : imagePickerTarget === 'schoolLogo'
+            ? 'เลือกรูปตราสัญลักษณ์ / ตราโรงเรียนจากฐานข้อมูล Firebase'
             : 'เลือกรูปตัวอย่างผู้ปกครองจากฐานข้อมูล Firebase'
         }
         onNotify={onNotify}
@@ -2614,6 +2970,8 @@ export const CardDesigner: React.FC<CardDesignerProps> = ({
             storageService.saveDesignerSamplePhoto(refUrl, asset.storagePath || '', asset.id);
             setSampleGuardianPhoto(storageService.resolveImageSrc(refUrl, asset.id));
             onNotify(`บันทึกรูปตัวอย่าง "${asset.fileName}" ลง Firebase Settings แล้ว`, 'success');
+          } else if (imagePickerTarget === 'qrCode' || imagePickerTarget === 'schoolLogo') {
+            handleSelectElementAsset(imagePickerTarget, asset);
           }
         }}
       />

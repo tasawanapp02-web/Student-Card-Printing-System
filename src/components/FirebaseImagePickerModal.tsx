@@ -27,6 +27,8 @@ const CATEGORY_LABELS: Record<ImageAssetCategory, string> = {
   back_bg: 'พื้นหลังหลังบัตร',
   guardian_photo: 'รูปผู้ปกครอง',
   sample_photo: 'รูปตัวอย่างบัตร',
+  qr_code: 'QR Code',
+  school_logo: 'ตราโรงเรียน',
 };
 
 export const FirebaseImagePickerModal: React.FC<FirebaseImagePickerModalProps> = ({
@@ -144,6 +146,14 @@ export const FirebaseImagePickerModal: React.FC<FirebaseImagePickerModalProps> =
                 {
                   key: 'sample_photo',
                   label: `รูปตัวอย่าง (${assets.filter((a) => a.category === 'sample_photo').length})`,
+                },
+                {
+                  key: 'qr_code',
+                  label: `QR Code (${assets.filter((a) => a.category === 'qr_code').length})`,
+                },
+                {
+                  key: 'school_logo',
+                  label: `ตราโรงเรียน (${assets.filter((a) => a.category === 'school_logo').length})`,
                 },
               ] as { key: ImageAssetCategory | 'all'; label: string }[]
             ).map((tab) => (

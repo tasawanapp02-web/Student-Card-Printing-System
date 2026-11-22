@@ -233,6 +233,14 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
     const resolvedBgSrc = design.bgImageUrl
       ? storageService.resolveImageSrc(design.bgImageUrl, design.bgImageAssetId)
       : '';
+    const resolvedSchoolLogoSrc =
+      el.schoolLogo?.imageUrl || el.schoolLogo?.imageAssetId
+        ? storageService.resolveImageSrc(el.schoolLogo.imageUrl, el.schoolLogo.imageAssetId)
+        : '';
+    const resolvedQrCustomSrc =
+      el.qrCode?.imageUrl || el.qrCode?.imageAssetId
+        ? storageService.resolveImageSrc(el.qrCode.imageUrl, el.qrCode.imageAssetId)
+        : '';
 
     return (
       <>
@@ -294,20 +302,39 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
         {/* 3. School Crest Logo */}
         {el.schoolLogo?.visible && (
           <div
-            className="absolute flex items-center justify-center"
+            className="absolute flex items-center justify-center overflow-hidden"
             style={{
               left: `${(el.schoolLogo.x / 85.6) * 100}%`,
               top: `${(el.schoolLogo.y / 54.0) * 100}%`,
               width: `${((el.schoolLogo.width || 14) / 85.6) * 100}%`,
               height: `${((el.schoolLogo.height || 14) / 54.0) * 100}%`,
+              borderRadius: el.schoolLogo.borderRadius ? `${el.schoolLogo.borderRadius}px` : undefined,
               zIndex: 30,
             }}
           >
-            <svg viewBox="0 0 40 40" className="w-full h-full drop-shadow-xs">
-              <polygon points="20,2 38,12 38,28 20,38 2,28 2,12" fill="#fbbf24" stroke="#ffffff" strokeWidth="1.5" />
-              <polygon points="20,6 34,14 34,26 20,34 6,26 6,14" fill="#1e3a8a" />
-              <path d="M20,11 L23,17 L30,17 L24,21 L26,27 L20,23 L14,27 L16,21 L10,17 L17,17 Z" fill="#fde047" />
-            </svg>
+            {resolvedSchoolLogoSrc ? (
+              <img
+                src={resolvedSchoolLogoSrc}
+                alt="School Logo"
+                className="w-full h-full object-contain drop-shadow-xs"
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  const fallbackData = storageService.getImageFallbackDataUrl(
+                    el.schoolLogo.imageUrl,
+                    el.schoolLogo.imageAssetId
+                  );
+                  if (fallbackData && img.src !== fallbackData) {
+                    img.src = fallbackData;
+                  }
+                }}
+              />
+            ) : (
+              <svg viewBox="0 0 40 40" className="w-full h-full drop-shadow-xs">
+                <polygon points="20,2 38,12 38,28 20,38 2,28 2,12" fill="#fbbf24" stroke="#ffffff" strokeWidth="1.5" />
+                <polygon points="20,6 34,14 34,26 20,34 6,26 6,14" fill="#1e3a8a" />
+                <path d="M20,11 L23,17 L30,17 L24,21 L26,27 L20,23 L14,27 L16,21 L10,17 L17,17 Z" fill="#fde047" />
+              </svg>
+            )}
           </div>
         )}
 
@@ -506,18 +533,38 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
         )}
 
         {/* 10. QR Code */}
-        {el.qrCode?.visible && qrDataUrl && (
+        {el.qrCode?.visible && (resolvedQrCustomSrc || qrDataUrl) && (
           <div
-            className="absolute bg-white p-0.5 rounded-sm shadow-xs flex items-center justify-center"
+            className="absolute bg-white p-0.5 rounded-sm shadow-xs flex items-center justify-center overflow-hidden"
             style={{
               left: `${(el.qrCode.x / 85.6) * 100}%`,
               top: `${(el.qrCode.y / 54.0) * 100}%`,
               width: `${((el.qrCode.width || 13) / 85.6) * 100}%`,
               height: `${((el.qrCode.height || 13) / 54.0) * 100}%`,
+              borderRadius: el.qrCode.borderRadius ? `${el.qrCode.borderRadius}px` : undefined,
               zIndex: 30,
             }}
           >
-            <img src={qrDataUrl} alt="QR" className="w-full h-full object-contain" />
+            <img
+              src={resolvedQrCustomSrc || qrDataUrl}
+              alt="QR"
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                if (!resolvedQrCustomSrc) return;
+                const img = e.currentTarget;
+                const fallbackData = storageService.getImageFallbackDataUrl(
+                  el.qrCode.imageUrl,
+                  el.qrCode.imageAssetId
+                );
+                if (fallbackData && img.src !== fallbackData) {
+                  img.src = fallbackData;
+                  return;
+                }
+                if (qrDataUrl && img.src !== qrDataUrl) {
+                  img.src = qrDataUrl;
+                }
+              }}
+            />
           </div>
         )}
 

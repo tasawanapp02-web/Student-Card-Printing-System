@@ -28,6 +28,7 @@ import {
 import {
   compressCardImage,
   compressAvatarPhoto,
+  compressElementImage,
   dataUrlToFile,
   isSafeSvgMarkup,
   MAX_FIRESTORE_DATAURL_CHARS,
@@ -1802,17 +1803,37 @@ class StorageService {
     }
 
     for (const fd of this.getFrontDesigns()) {
-      const matched =
+      const bgMatched =
         fd.bgImageAssetId === asset.id ||
         fd.bgImageUrl === assetRefUri ||
         Boolean(asset.storageUrl && fd.bgImageUrl === asset.storageUrl) ||
         Boolean(asset.storagePath && fd.bgImageStoragePath === asset.storagePath);
-      if (matched) {
+      const qrEl = fd.elements?.qrCode;
+      const qrMatched = Boolean(
+        qrEl &&
+          (qrEl.imageAssetId === asset.id ||
+            qrEl.imageUrl === assetRefUri ||
+            (asset.storageUrl && qrEl.imageUrl === asset.storageUrl) ||
+            (asset.storagePath && qrEl.imageStoragePath === asset.storagePath))
+      );
+      const logoEl = fd.elements?.schoolLogo;
+      const logoMatched = Boolean(
+        logoEl &&
+          (logoEl.imageAssetId === asset.id ||
+            logoEl.imageUrl === assetRefUri ||
+            (asset.storageUrl && logoEl.imageUrl === asset.storageUrl) ||
+            (asset.storagePath && logoEl.imageStoragePath === asset.storagePath))
+      );
+      if (bgMatched || qrMatched || logoMatched) {
+        const parts: string[] = [];
+        if (bgMatched) parts.push('ภาพพื้นหลัง');
+        if (qrMatched) parts.push('QR Code');
+        if (logoMatched) parts.push('ตราโรงเรียน');
         refs.push({
           type: 'front_design',
           id: fd.id,
           label: `แม่แบบหน้าบัตร: ${fd.name || fd.title || fd.id}`,
-          detail: fd.level,
+          detail: `${fd.level} • ${parts.join(', ')}`,
         });
       }
     }
@@ -2219,6 +2240,38 @@ class StorageService {
     });
   }
 
+  public async uploadCardElementImage(
+    file: File,
+    elementKey: 'qrCode' | 'schoolLogo',
+    designId: string
+  ): Promise<UploadedImageSummary> {
+    const uid = this.getCurrentUid();
+    if (!uid) {
+      throw new Error('กรุณาเข้าสู่ระบบก่อนอัปโหลดรูปภาพไปยัง Firebase');
+    }
+
+    const compressed = await compressElementImage(file);
+    const cleanDesignId = sanitizeId(designId, 'design_front');
+    const category: ImageAssetCategory = elementKey === 'qrCode' ? 'qr_code' : 'school_logo';
+    const storagePath = `card_designs/${uid}/elements/${elementKey}/${cleanDesignId}_${Date.now()}.${compressed.extension}`;
+    const fileName = sanitizeFileName(
+      file.name || `${elementKey}_${cleanDesignId}.${compressed.extension}`
+    );
+
+    return this.uploadAndRegisterImageAsset({
+      compressed,
+      category,
+      fileName,
+      storagePath,
+      customMetadata: {
+        originalSize: String(compressed.originalSize),
+        compressedSize: String(compressed.compressedSize),
+        elementKey,
+        designId: cleanDesignId,
+      },
+    });
+  }
+
   public async uploadSamplePhoto(file: File): Promise<UploadedImageSummary> {
     const uid = this.getCurrentUid();
     if (!uid) {
@@ -2309,7 +2362,13 @@ class StorageService {
     const fronts = this.getFrontDesigns();
     const backs = this.getBackDesigns();
     return (
-      fronts.some((d) => d.id !== excludeDesignId && d.bgImageStoragePath === storagePath) ||
+      fronts.some(
+        (d) =>
+          d.id !== excludeDesignId &&
+          (d.bgImageStoragePath === storagePath ||
+            d.elements?.qrCode?.imageStoragePath === storagePath ||
+            d.elements?.schoolLogo?.imageStoragePath === storagePath)
+      ) ||
       backs.some((d) => d.id !== excludeDesignId && d.bgImageStoragePath === storagePath)
     );
   }
@@ -3999,6 +4058,12 @@ class StorageService {
     for (const f of this.getFrontDesigns()) {
       if (f.bgImageStoragePath) {
         await this.deleteStorageObjectQuietly(f.bgImageStoragePath);
+      }
+      if (f.elements?.qrCode?.imageStoragePath) {
+        await this.deleteStorageObjectQuietly(f.elements.qrCode.imageStoragePath);
+      }
+      if (f.elements?.schoolLogo?.imageStoragePath) {
+        await this.deleteStorageObjectQuietly(f.elements.schoolLogo.imageStoragePath);
       }
     }
     for (const b of this.getBackDesigns()) {

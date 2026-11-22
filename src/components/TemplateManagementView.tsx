@@ -515,8 +515,8 @@ export const TemplateManagementView: React.FC<TemplateManagementViewProps> = ({
                       </span>
                     </div>
 
-                    <div className="rounded-lg overflow-hidden shadow-md ring-1 ring-slate-300/60">
-                      <CardPreview design={tpl} scale={0.76} />
+                    <div className="inline-flex items-center justify-center rounded-[5.3px] overflow-hidden shadow-none ring-0 border-0 leading-none">
+                      <CardPreview design={tpl} scale={0.76} hideBorderAndShadow={true} />
                     </div>
                   </div>
 

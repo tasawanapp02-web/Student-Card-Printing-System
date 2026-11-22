@@ -583,7 +583,7 @@
         "category": {
           "type": "string",
           "description": "Asset usage category.",
-          "enum": ["front_bg", "back_bg", "guardian_photo", "sample_photo"]
+          "enum": ["front_bg", "back_bg", "guardian_photo", "sample_photo", "qr_code", "school_logo"]
         },
         "fileName": {
           "type": "string",
